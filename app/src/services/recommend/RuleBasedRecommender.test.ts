@@ -122,3 +122,35 @@ describe('replacing a stop', () => {
     expect(course.stops[course.stops.length - 1].leaveMinute).toBeLessThanOrEqual(22 * 60);
   });
 });
+
+describe('insertStop', () => {
+  it('adds a place I picked between two stops and keeps 30-minute steps', async () => {
+    const course = await recommender.recommend(base());
+    const cafe = byName('로스터리 창고');
+    const updated = await recommender.insertStop(course, 1, cafe);
+    expect(updated.stops).toHaveLength(course.stops.length + 1);
+    expect(updated.stops[1].place.id).toBe(cafe.id);
+    expect(updated.legs).toHaveLength(updated.stops.length - 1);
+    for (const s of updated.stops) expect(s.arriveMinute % 30).toBe(0);
+    for (let i = 1; i < updated.stops.length; i++) {
+      expect(updated.stops[i].arriveMinute).toBeGreaterThanOrEqual(updated.stops[i - 1].leaveMinute + updated.legs[i - 1].travel.minutes);
+    }
+  });
+
+  it('recommends a new place for the slot when none is given', async () => {
+    const course = await recommender.recommend(base());
+    const updated = await recommender.insertStop(course, course.stops.length);
+    expect(updated.stops).toHaveLength(course.stops.length + 1);
+    const added = updated.stops[updated.stops.length - 1];
+    expect(course.stops.some((s) => s.place.id === added.place.id)).toBe(false);
+    expect(added.place.regionId).toBe('seongsu');
+  });
+
+  it('keeps a fixed-time pin at its time after inserting before it', async () => {
+    const pasta = byName('붉은벽돌 파스타');
+    const course = await recommender.recommend(base({ pins: [{ place: pasta, fixedMinute: 19 * 60 }] }));
+    const idx = course.stops.findIndex((s) => s.place.id === pasta.id);
+    const updated = await recommender.insertStop(course, idx);
+    expect(updated.stops.find((s) => s.place.id === pasta.id)!.arriveMinute).toBe(19 * 60);
+  });
+});

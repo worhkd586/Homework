@@ -24,7 +24,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
-      {course ? <ResultScreen course={course} onBack={() => setCourse(null)} /> : <SetupScreen onCourse={setCourse} />}
+      {course ? <ResultScreen course={course} onChange={setCourse} onBack={() => setCourse(null)} /> : <SetupScreen onCourse={setCourse} />}
     </SafeAreaProvider>
   );
 }
