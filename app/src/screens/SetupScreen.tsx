@@ -5,6 +5,7 @@ import type { Course, PinnedPlace, Place, Region, TimeSlotId } from '../domain/t
 import { MOODS, type MoodId } from '../domain/moods';
 import { recommendOptions, suggestRegion } from '../services/recommend/courseOptions';
 import type { SavedCourse } from '../lib/savedCourses';
+import { ACTIVITY_EXAMPLES, parseActivity, type Activity } from '../domain/activities';
 import { CATEGORY_EMOJI, CATEGORY_LABEL, TIME_SLOTS, formatMinute, getTimeSlot } from '../domain/timeSlots';
 import { placeProvider, recommender } from '../lib/services';
 import { colors } from '../ui/theme';
@@ -29,6 +30,9 @@ interface Props {
 
 export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, onDeleteSaved, onResult }: Props) {
   const [moodId, setMoodId] = useState<MoodId>();
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [wish, setWish] = useState('');
+  const [wishHint, setWishHint] = useState<string>();
   const [regions, setRegions] = useState<Region[]>([]);
   const [regionId, setRegionId] = useState<string>();
   const [slotId, setSlotId] = useState<TimeSlotId>('evening');
@@ -40,7 +44,23 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
   const [error, setError] = useState<string>();
 
   const slot = getTimeSlot(slotId);
-  const ready = !!moodId && !!regionId && !loading;
+  const ready = (!!moodId || activities.length > 0) && !!regionId && !loading;
+
+  function toggleActivity(a: Activity) {
+    setActivities((list) => (list.some((x) => x.label === a.label) ? list.filter((x) => x.label !== a.label) : [...list, a]));
+  }
+
+  function addWish() {
+    if (!wish.trim()) return;
+    const parsed = parseActivity(wish);
+    setActivities((list) => [...list.filter((x) => x.label !== parsed.label), parsed]);
+    setWishHint(
+      parsed.known
+        ? undefined
+        : `‘${parsed.label}’은(는) 아직 장소 목록에 없어서 비슷한 체험 장소로 찾아볼게요.`,
+    );
+    setWish('');
+  }
 
   useEffect(() => {
     placeProvider.listRegions().then(setRegions);
@@ -67,14 +87,14 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
   }
 
   async function makeCourses() {
-    if (!regionId || !moodId) return;
+    if (!regionId || (!moodId && activities.length === 0)) return;
     setLoading(true);
     setError(undefined);
     try {
       let region = regions.find((r) => r.id === regionId);
       let note: string | undefined;
       if (regionId === AUTO) {
-        const suggestion = await suggestRegion(placeProvider, moodId);
+        const suggestion = await suggestRegion(placeProvider, moodId, activities);
         region = suggestion.region;
         note = `✨ ${region.name} 추천 · ${suggestion.reason}`;
       }
@@ -91,6 +111,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
         },
         moodId,
         region.name,
+        activities,
       );
       onResult({ options, note });
     } catch (e) {
@@ -106,7 +127,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
         <Text style={styles.brand}>
           <Text style={{ color: colors.accent }}>오늘</Text>어디가
         </Text>
-        <Text style={styles.muted}>기분만 고르면 할 것과 갈 곳은 골라 드려요.</Text>
+        <Text style={styles.muted}>기분이나 하고 싶은 걸 고르면, 갈 곳과 순서는 짜 드려요.</Text>
 
         {hasCurrent && (
           <Pressable style={[styles.card, styles.resume]} onPress={onResume}>
@@ -150,6 +171,42 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
             </Pressable>
           ))}
         </View>
+
+        <Text style={styles.h2}>하고 싶은 거 있어요? (여러 개 OK)</Text>
+        <View style={styles.chips}>
+          {ACTIVITY_EXAMPLES.map((a) => {
+            const on = activities.some((x) => x.label === a.label);
+            return (
+              <Pressable key={a.label} style={[styles.chip, on && styles.chipOn]} onPress={() => toggleActivity(a)}>
+                <Text style={[styles.text, on && styles.chipOnText]}>
+                  {a.emoji} {a.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+          {activities
+            .filter((a) => !ACTIVITY_EXAMPLES.some((x) => x.label === a.label))
+            .map((a) => (
+              <Pressable key={a.label} style={[styles.chip, styles.chipOn]} onPress={() => toggleActivity(a)}>
+                <Text style={[styles.text, styles.chipOnText]}>✍️ {a.label} ✕</Text>
+              </Pressable>
+            ))}
+        </View>
+        <View style={styles.wishRow}>
+          <TextInput
+            style={[styles.input, { flex: 1, marginBottom: 0 }]}
+            placeholder="직접 입력 (예: 도자기, 볼링, 한강)"
+            placeholderTextColor={colors.muted}
+            value={wish}
+            onChangeText={setWish}
+            onSubmitEditing={addWish}
+            returnKeyType="done"
+          />
+          <Pressable style={[styles.wishButton, !wish.trim() && styles.buttonOff]} onPress={addWish} disabled={!wish.trim()}>
+            <Text style={styles.buttonTextSmall}>추가</Text>
+          </Pressable>
+        </View>
+        {wishHint && <Text style={styles.small}>{wishHint}</Text>}
 
         <Text style={styles.h2}>어디서 만나요?</Text>
         <View style={styles.grid}>
@@ -249,7 +306,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.buttonText}>{!moodId ? '어떤 데이트인지 골라 주세요' : !regionId ? '지역을 골라 주세요' : '코스 3개 보기'}</Text>
+            <Text style={styles.buttonText}>{!moodId && activities.length === 0 ? '어떤 데이트인지 골라 주세요' : !regionId ? '지역을 골라 주세요' : '코스 3개 보기'}</Text>
           )}
         </Pressable>
       </SafeAreaView>
@@ -280,6 +337,11 @@ const styles = StyleSheet.create({
   placeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   resume: { marginTop: 16, borderColor: colors.line },
   savedRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 12, backgroundColor: colors.card, marginBottom: 8 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chipOnText: { color: colors.bg, fontWeight: '700' },
+  wishRow: { flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'center' },
+  wishButton: { backgroundColor: colors.accent, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 11 },
+  buttonTextSmall: { color: '#fff', fontSize: 15, fontWeight: '800' },
   footer: { paddingHorizontal: 20, paddingTop: 10, backgroundColor: colors.bg },
   button: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginBottom: 8 },
   buttonOff: { backgroundColor: '#3a3a44' },

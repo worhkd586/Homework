@@ -175,7 +175,7 @@ export class RuleBasedRecommender implements CourseRecommender {
           const arrive = clock + (planned.length ? toHere.minutes : 0);
           if (!isOpenDuring(place, arrive, arrive + minStay(stay))) continue;
           const toNext = nextPin ? (await this.routes.estimateTravel(place.location, nextPin.pin.place.location)).minutes : 0;
-          const prefHits = place.tags.filter((t) => request.preferences.includes(t)).length;
+          const prefHits = place.tags.filter((t) => request.preferences.includes(t)).length + (matchesKeyword(place, request.keywords) ? 2 : 0);
           const score = place.rating * 12 + prefHits * 8 - toHere.minutes * 0.8 - toNext * 0.4 - (avoided.has(place.id) ? 40 : 0);
           if (!best || score > best.score) best = { place, score, travel: toHere.minutes, mode: toHere.mode };
         }
@@ -319,6 +319,12 @@ export class RuleBasedRecommender implements CourseRecommender {
     const stops = schedule(planned, legs, course.request, warnings);
     return { ...course, stops, legs, warnings, totalTravelMinutes: legs.reduce((sum, l) => sum + l.travel.minutes, 0) };
   }
+}
+
+function matchesKeyword(place: Place, keywords: string[] | undefined): boolean {
+  if (!keywords?.length) return false;
+  const text = `${place.name} ${place.description} ${place.tags.join(' ')}`.toLowerCase();
+  return keywords.some((k) => k && text.includes(k.toLowerCase()));
 }
 
 function toPlanned(course: Course): Planned[] {

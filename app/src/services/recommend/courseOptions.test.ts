@@ -73,3 +73,62 @@ describe('suggestRegion', () => {
     }
   });
 });
+
+describe('activities (하고 싶은 것)', () => {
+  it('maps typed wishes to place kinds', async () => {
+    const { parseActivity } = await import('../../domain/activities');
+    expect(parseActivity('도자기 만들기').category).toBe('activity');
+    expect(parseActivity('미술관 가고 싶어').category).toBe('culture');
+    expect(parseActivity('와인 한잔').category).toBe('bar');
+    expect(parseActivity('한강 산책').category).toBe('walk');
+    const unknown = parseActivity('스카이다이빙');
+    expect(unknown.known).toBe(false);
+    expect(unknown.category).toBe('activity');
+  });
+
+  it('puts the wanted activity into every option', async () => {
+    const { ACTIVITY_EXAMPLES } = await import('../../domain/activities');
+    const museum = ACTIVITY_EXAMPLES.find((a) => a.label === '미술관·전시')!;
+    const options = await recommendOptions(
+      recommender,
+      { regionId: 'gangnam', slotId: 'afternoon', date: 'x', startMinute: 13 * 60, endMinute: 18 * 60, pins: [] },
+      'food',
+      '강남',
+      [museum],
+    );
+    for (const o of options) expect(o.stops.some((s) => s.place.category === 'culture')).toBe(true);
+  });
+
+  it('fits a museum into an evening course next to other wishes', async () => {
+    const { ACTIVITY_EXAMPLES, parseActivity } = await import('../../domain/activities');
+    const museum = ACTIVITY_EXAMPLES.find((a) => a.label === '미술관·전시')!;
+    const options = await recommendOptions(
+      recommender,
+      { regionId: 'gangnam', slotId: 'evening', date: 'x', startMinute: 17 * 60, endMinute: 22 * 60, pins: [] },
+      undefined,
+      '강남',
+      [museum, parseActivity('도자기')],
+    );
+    expect(options[0].stops.some((s) => s.place.category === 'culture')).toBe(true);
+    expect(options[0].stops.some((s) => s.place.category === 'activity')).toBe(true);
+  });
+
+  it('works without a mood when an activity is chosen', async () => {
+    const { parseActivity } = await import('../../domain/activities');
+    const options = await recommendOptions(
+      recommender,
+      { regionId: 'jamsil', slotId: 'afternoon', date: 'x', startMinute: 13 * 60, endMinute: 18 * 60, pins: [] },
+      undefined,
+      '잠실',
+      [parseActivity('놀이공원')],
+    );
+    expect(options.length).toBeGreaterThanOrEqual(2);
+    expect(options[0].stops.some((s) => s.place.name.includes('테마파크'))).toBe(true);
+  });
+
+  it('suggests a region that has the typed wish', async () => {
+    const { parseActivity } = await import('../../domain/activities');
+    const { region } = await suggestRegion(places, undefined, [parseActivity('석촌호수 야경')]);
+    expect(region.id).toBe('jamsil');
+  });
+});

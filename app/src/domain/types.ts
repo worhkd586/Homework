@@ -78,6 +78,8 @@ export interface CourseRequest {
   excludePlaceIds?: string[];
   /** 되도록 피할 장소들 (다른 추천 코스에 이미 나온 곳) */
   avoidPlaceIds?: string[];
+  /** 이 말이 장소 이름·설명·태그에 들어가면 우선 (하고 싶은 것 직접 입력 등) */
+  keywords?: string[];
   /** 시간대 기본 흐름 대신 쓸 흐름 (기분별 코스 템플릿) */
   flow?: PlaceCategory[];
   /** 코스 이름 (없으면 "지역 시간대 코스") */
