@@ -2,7 +2,7 @@ import type { LatLng, Place, Region, TravelEstimate } from '../../domain/types';
 
 /**
  * 장소 데이터의 경계(interface).
- * 지금은 MockPlaceProvider, 나중에 네이버 검색 API(지역)를 쓰는 NaverPlaceProvider로 교체한다.
+ * 목업(MockPlaceProvider)과 카카오 실제 장소(KakaoPlaceProvider, 프록시 경유)가 구현한다.
  */
 export interface PlaceProvider {
   readonly name: string;
@@ -15,8 +15,8 @@ export interface PlaceProvider {
 
 /**
  * 이동시간의 경계(interface).
- * MVP는 직선거리 기반 도보 추정(StraightLineRouteProvider). 네이버 Directions는 자동차 경로만
- * 주므로, 먼 구간의 대중교통은 이후 ODsay 같은 API를 붙이는 구현으로 교체한다.
+ * 지금은 직선거리 기반 추정(StraightLineRouteProvider, 무료). 카카오모빌리티 길찾기는 별도 사용 신청이
+ * 필요해서, 승인되면 이 인터페이스를 구현해 교체한다.
  */
 export interface RouteProvider {
   readonly name: string;

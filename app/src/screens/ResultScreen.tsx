@@ -1,9 +1,9 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Course, Place } from '../domain/types';
 import { CATEGORY_EMOJI, CATEGORY_LABEL, formatMinute, getTimeSlot } from '../domain/timeSlots';
-import { placeProvider, recommender } from '../lib/services';
+import { dataSourceNote, placeProvider, recommender } from '../lib/services';
 import { colors } from '../ui/theme';
 
 interface Props {
@@ -123,6 +123,11 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
           <Pressable style={styles.action} onPress={() => open({ kind: 'replace', index })}>
             <Text style={styles.actionText}>↻ 다른 곳</Text>
           </Pressable>
+          {stop.place.url && (
+            <Pressable style={styles.action} onPress={() => Linking.openURL(stop.place.url!)}>
+              <Text style={styles.actionText}>🗺️ 지도</Text>
+            </Pressable>
+          )}
           <Pressable style={styles.action} onPress={() => run(() => recommender.removeStop(course, index))}>
             <Text style={[styles.actionText, { color: colors.accent }]}>✕ 삭제</Text>
           </Pressable>
@@ -244,7 +249,7 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
           })}
         </View>
 
-        <Text style={[styles.small, { marginTop: 24 }]}>장소는 아직 목업 데이터예요. 네이버 지도를 연결하면 실제 장소로 바뀝니다.</Text>
+        <Text style={[styles.small, { marginTop: 24 }]}>{dataSourceNote()}</Text>
       </ScrollView>
 
       <SafeAreaView edges={['bottom']} style={styles.footer}>

@@ -1,0 +1,13 @@
+{
+  "name": "date-course-proxy",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "2.1.8",
+    "wrangler": "4.20.0"
+  }
+}

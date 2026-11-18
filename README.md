@@ -61,20 +61,37 @@ app/
    └─ services/
       ├─ places/
       │  ├─ PlaceProvider.ts        PlaceProvider(장소) · RouteProvider(이동시간) 인터페이스
+      │  ├─ KakaoPlaceProvider.ts   카카오 실제 장소 (프록시 경유) + 실패 시 목업으로 대신
       │  ├─ MockPlaceProvider.ts    목업 장소 (가상의 50곳, 5개 지역)
-      │  ├─ StraightLineRouteProvider.ts  직선거리 기반 도보 추정
-      │  └─ NaverPlaceProvider.ts   네이버 지도 API 자리 (미구현)
+      │  └─ StraightLineRouteProvider.ts  직선거리 기반 도보 추정
+proxy/                              카카오 키를 숨기는 Cloudflare Worker (+ 테스트)
       └─ recommend/                 코스 추천 엔진 (규칙 기반), 코스 3개·지역 추천(courseOptions.ts) + 테스트
 ```
 
-## 네이버 지도 연동 시
+## 실제 장소 연결 (카카오, 무료)
 
-- `NaverPlaceProvider`를 채우고 `EXPO_PUBLIC_PLACES_PROVIDER=naver`로 전환합니다.
-- 네이버 Directions는 자동차 경로만 주므로, 이동시간(`RouteProvider`)은 도보는 직선거리 추정, 먼 구간은 대중교통 API(예: ODsay)로 바꿉니다.
-- API 키는 앱에 넣지 말고 작은 서버를 거쳐 호출하세요.
+앱 → **장소 프록시**(Cloudflare Workers, 무료) → 카카오 로컬 API 순서로 연결돼요. 카카오 키는 앱에 넣지 않고 프록시에만 둡니다 (앱 파일은 누구나 열어볼 수 있어서요).
+
+1. **카카오 키 만들기**: [developers.kakao.com](https://developers.kakao.com) 로그인 → 내 애플리케이션 → 애플리케이션 추가 → 앱 키의 **REST API 키**를 확인해요. (키는 채팅이나 코드에 붙여넣지 마세요.) 콘솔에서 카카오맵/로컬 사용 설정을 켜라는 안내가 나오면 켜 주세요.
+2. **프록시 올리기**: [Cloudflare](https://dash.cloudflare.com/sign-up) 무료 가입 후 PowerShell에서:
+   ```powershell
+   cd proxy
+   npm install
+   npx wrangler login                       # 브라우저에서 Cloudflare 로그인
+   npx wrangler secret put KAKAO_REST_KEY   # 물어보면 REST API 키를 붙여넣기 (터미널에만)
+   npx wrangler deploy                      # 끝나면 https://date-course-proxy.<내이름>.workers.dev 주소가 나와요
+   ```
+   확인: 브라우저에서 `https://date-course-proxy.<내이름>.workers.dev/search?q=성수 카페` 를 열면 장소 목록(JSON)이 보여요.
+3. **앱에 주소 넣기**: `app/.env.example`을 `app/.env.local`로 복사하고 `EXPO_PUBLIC_PLACES_PROXY_URL=` 뒤에 2번 주소를 넣은 뒤 `npx expo start`를 다시 실행해요.
+
+알아둘 것
+- 비용: 카카오 로컬 API와 Cloudflare Workers 모두 무료 한도 안에서 써요. 같은 검색은 프록시가 하루 동안 캐시해요.
+- 카카오는 평점·영업시간을 주지 않아서, 순위로 점수를 매기고 영업시간은 종류별로 흔한 시간으로 가정해요. 결과 화면에 "가기 전에 확인" 안내가 나와요. 일정마다 🗺️ 지도로 카카오맵을 열 수 있어요.
+- 이동시간은 아직 직선거리 어림값이에요. 카카오모빌리티 길찾기는 별도 사용 신청이 필요해서 다음 단계로 남겨 뒀어요.
+- 프록시가 꺼져 있거나 오류가 나면 앱은 목업 장소로 대신 보여 줘요.
 
 ## 아직 안 한 것
 
 - 캘린더에 추가 (마지막 단계)
-- 실제 장소 데이터 (네이버 지도)
+- 실제 길찾기 이동시간 (카카오모빌리티 사용 신청 후)
 - 기획 문서: [docs/01-기획-벤치마크.md](docs/01-기획-벤치마크.md)

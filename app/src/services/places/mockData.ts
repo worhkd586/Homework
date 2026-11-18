@@ -2,7 +2,7 @@ import type { Place, PlaceCategory, Region } from '../../domain/types';
 
 /**
  * 목업 데이터. 장소 이름은 모두 가상의 이름이고, 좌표는 각 동네 중심 근처에
- * 흩어 놓은 값이다. 네이버 지도 API 연동 후에는 쓰이지 않는다.
+ * 흩어 놓은 값이다. 실제 장소를 못 불러올 때 대신 쓴다.
  */
 export const REGIONS: Region[] = [
   { id: 'seongsu', name: '성수', tagline: '공장 감성 카페와 팝업', center: { lat: 37.5445, lng: 127.056 } },

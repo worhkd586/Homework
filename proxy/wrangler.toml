@@ -1,0 +1,6 @@
+name = "date-course-proxy"
+main = "worker.js"
+compatibility_date = "2025-06-01"
+
+# 카카오 REST API 키는 여기 쓰지 말고, 터미널에서 비밀값으로 넣는다:
+#   npx wrangler secret put KAKAO_REST_KEY

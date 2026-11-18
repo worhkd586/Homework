@@ -35,6 +35,8 @@ export interface Place {
   stayMinutes?: number;
   tags: string[];
   description: string;
+  /** 지도 앱에서 열 링크 (실제 데이터일 때) */
+  url?: string;
 }
 
 export type TimeSlotId = 'lunch' | 'afternoon' | 'evening' | 'night';
