@@ -19,6 +19,9 @@ export interface KakaoDoc {
   review_count?: number;
 }
 
+/** 프록시 응답 모양이 바뀔 때마다 올린다 (캐시 무효화) */
+const PROXY_VERSION = '2';
+
 /** 프록시의 검색 묶음 → 앱의 장소 종류 */
 const KINDS: Array<{ kind: string; category: PlaceCategory }> = [
   { kind: 'restaurant', category: 'restaurant' },
@@ -54,6 +57,9 @@ const EXCLUDE: Partial<Record<PlaceCategory, RegExp>> = {
   walk: /명예도로|상점가|푸드트럭|먹자골목|주차장/,
   shop: /인테리어|가구|철물|도매|부동산|공구|자재|생활용품|마트|슈퍼|다이소|약국/,
 };
+
+/** 어느 종류든 데이트 코스로는 안 맞는 곳 (주차장, 아이용 시설 등) */
+const EXCLUDE_ALL = /주차장|화장실|매표소|어린이|키즈|유아|근린공원|소공원|놀이터/;
 
 /** 후기가 이보다 적으면 (같은 종류에 다른 후보가 충분할 때) 뺀다 */
 const MIN_REVIEWS = 10;
@@ -105,6 +111,7 @@ export function toPlace(doc: KakaoDoc, regionId: string, rank: number, hint?: Pl
 export function curate(places: Place[]): Place[] {
   const relevant = places.filter((p) => {
     const text = `${p.name} ${p.tags.join(' ')}`;
+    if (EXCLUDE_ALL.test(p.name)) return false;
     if (p.category === 'shop' && /소품|잡화|선물|편집|팝업|문구/.test(text)) return true; // 생활용품점으로 분류된 소품샵은 살린다
     return !EXCLUDE[p.category]?.test(text);
   });
@@ -140,7 +147,8 @@ export class KakaoPlaceProvider implements PlaceProvider {
   ) {}
 
   private async getJson<T>(path: string, params: Record<string, string>): Promise<T> {
-    const url = `${this.proxyUrl.replace(/\/$/, '')}${path}?${new URLSearchParams(params)}`;
+    // v: 프록시가 바뀌면 올린다. 예전 프록시의 캐시(하루)를 안 쓰게 하려고.
+    const url = `${this.proxyUrl.replace(/\/$/, '')}${path}?${new URLSearchParams({ ...params, v: PROXY_VERSION })}`;
     const res = await this.fetchImpl(url);
     if (!res.ok) throw new Error(`장소 서버 오류 (${res.status})`);
     return (await res.json()) as T;
