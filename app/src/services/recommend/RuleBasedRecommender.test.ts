@@ -174,3 +174,35 @@ describe('removeStop', () => {
     expect(back.warnings.some((w) => w.kind === 'tight')).toBe(false);
   });
 });
+
+describe('editing a planned course', () => {
+  it('replaces a stop with a recommendation or a picked place', async () => {
+    const course = await recommender.recommend(base());
+    const recommended = await recommender.replaceStop(course, 1);
+    expect(recommended.stops).toHaveLength(course.stops.length);
+    expect(recommended.stops[1].place.id).not.toBe(course.stops[1].place.id);
+    const cafe = byName('로스터리 창고');
+    const picked = await recommender.replaceStop(course, 0, cafe);
+    expect(picked.stops[0].place.id).toBe(cafe.id);
+  });
+
+  it('fixes a stop to a new 30-minute time and keeps the order by time', async () => {
+    const course = await recommender.recommend(base());
+    const last = course.stops.length - 1;
+    const moved = await recommender.setStopTime(course, last, 17 * 60);
+    expect(moved.stops[0].place.id).toBe(course.stops[last].place.id);
+    expect(moved.stops[0].arriveMinute).toBe(17 * 60);
+    expect(moved.stops[0].fixedTime).toBe(true);
+    for (let i = 1; i < moved.stops.length; i++) expect(moved.stops[i].arriveMinute).toBeGreaterThanOrEqual(moved.stops[i - 1].leaveMinute);
+  });
+
+  it('unfixes a time', async () => {
+    const pasta = byName('붉은벽돌 파스타');
+    const course = await recommender.recommend(base({ pins: [{ place: pasta, fixedMinute: 19 * 60 }] }));
+    const idx = course.stops.findIndex((s) => s.place.id === pasta.id);
+    const free = await recommender.setStopTime(course, idx, undefined);
+    const stop = free.stops.find((s) => s.place.id === pasta.id)!;
+    expect(stop.fixedTime).toBe(false);
+    expect(stop.pinned).toBe(true);
+  });
+});

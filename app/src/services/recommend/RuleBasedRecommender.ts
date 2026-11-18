@@ -231,7 +231,7 @@ export class RuleBasedRecommender implements CourseRecommender {
     };
   }
 
-  async insertStop(course: Course, index: number, place?: Place): Promise<Course> {
+  async insertStop(course: Course, index: number, place?: Place, avoidIds: string[] = []): Promise<Course> {
     const request = course.request;
     const planned = toPlanned(course);
     const at = Math.max(0, Math.min(index, planned.length));
@@ -243,7 +243,7 @@ export class RuleBasedRecommender implements CourseRecommender {
     } else {
       // 그 자리에 어울리는 곳: 영업 중이고, 앞뒤 이동이 짧고, 코스에 없던 종류면 가산점
       const candidates = await this.places.listPlaces(request.regionId);
-      const used = new Set(planned.map((p) => p.place.id));
+      const used = new Set([...planned.map((p) => p.place.id), ...avoidIds]);
       const usedCategories = new Set(planned.map((p) => p.place.category));
       const prevStop = course.stops[at - 1];
       const clock = prevStop ? prevStop.leaveMinute : request.startMinute;
@@ -270,6 +270,35 @@ export class RuleBasedRecommender implements CourseRecommender {
 
   async removeStop(course: Course, index: number): Promise<Course> {
     const planned = toPlanned(course).filter((_, i) => i !== index);
+    return this.reschedule(course, planned);
+  }
+
+  async replaceStop(course: Course, index: number, place?: Place): Promise<Course> {
+    const without = await this.removeStop(course, index);
+    const replaced = await this.insertStop(without, index, place, course.stops[index] ? [course.stops[index].place.id] : []);
+    // 바꾼 자리가 원래 시간 고정이었다면 같은 시각을 유지한다
+    const old = course.stops[index];
+    return old?.fixedTime ? this.setStopTime(replaced, index, old.arriveMinute) : replaced;
+  }
+
+  async setStopTime(course: Course, index: number, minute: number | undefined): Promise<Course> {
+    const planned = toPlanned(course);
+    const target = planned[index];
+    if (!target) return course;
+    if (minute === undefined) {
+      // 시간 고정만 풀고, 꼭 갈 곳/직접 추가 여부는 그대로
+      target.pin = target.pin ? { place: target.place } : undefined;
+    } else {
+      target.pin = { place: target.place, fixedMinute: minute };
+      // 시간을 고정하면 순서도 그 시각에 맞춘다
+      planned.splice(index, 1);
+      let at = planned.findIndex((p, i) => {
+        const stop = course.stops.filter((_, j) => j !== index)[i];
+        return (p.pin?.fixedMinute ?? stop.arriveMinute) >= minute;
+      });
+      if (at < 0) at = planned.length;
+      planned.splice(at, 0, target);
+    }
     return this.reschedule(course, planned);
   }
 

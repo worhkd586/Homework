@@ -14,4 +14,8 @@ export interface CourseRecommender {
   insertStop(course: Course, index: number, place?: Place): Promise<Course>;
   /** 결과 코스에서 index번째 일정을 빼고 시간표를 다시 계산한다. */
   removeStop(course: Course, index: number): Promise<Course>;
+  /** index번째 일정을 다른 곳으로 바꾼다 (place가 없으면 추천) */
+  replaceStop(course: Course, index: number, place?: Place): Promise<Course>;
+  /** index번째 일정의 도착 시각을 고정하거나(분), undefined로 고정을 푼다 */
+  setStopTime(course: Course, index: number, minute: number | undefined): Promise<Course>;
 }
