@@ -154,3 +154,23 @@ describe('insertStop', () => {
     expect(updated.stops.find((s) => s.place.id === pasta.id)!.arriveMinute).toBe(19 * 60);
   });
 });
+
+describe('removeStop', () => {
+  it('removes a stop and pulls the next ones earlier', async () => {
+    const course = await recommender.recommend(base({ slotId: 'afternoon', startMinute: 13 * 60, endMinute: 18 * 60 }));
+    const updated = await recommender.removeStop(course, 1);
+    expect(updated.stops).toHaveLength(course.stops.length - 1);
+    expect(updated.stops.some((s) => s.place.id === course.stops[1].place.id)).toBe(false);
+    expect(updated.legs).toHaveLength(updated.stops.length - 1);
+    expect(updated.stops[1].arriveMinute).toBeLessThan(course.stops[2].arriveMinute);
+    for (const s of updated.stops) expect(s.arriveMinute % 30).toBe(0);
+  });
+
+  it('clears the over-time warning once enough is removed', async () => {
+    const course = await recommender.recommend(base());
+    const longer = await recommender.insertStop(course, 1);
+    expect(longer.warnings.some((w) => w.kind === 'tight')).toBe(true);
+    const back = await recommender.removeStop(longer, 1);
+    expect(back.warnings.some((w) => w.kind === 'tight')).toBe(false);
+  });
+});

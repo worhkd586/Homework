@@ -32,6 +32,16 @@ export default function ResultScreen({ course, onChange, onBack }: Props) {
     setQuery('');
   }
 
+  async function remove(index: number) {
+    setBusy(true);
+    try {
+      onChange(await recommender.removeStop(course, index));
+      setAddingAt(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function add(place?: Place) {
     if (addingAt === null) return;
     setBusy(true);
@@ -110,6 +120,12 @@ export default function ResultScreen({ course, onChange, onBack }: Props) {
         ))}
 
         <View style={{ marginTop: 20 }}>
+          {course.stops.length === 0 && (
+            <>
+              <Text style={styles.muted}>일정이 모두 비었어요. 새로 추가해 보세요.</Text>
+              {addPanel(0)}
+            </>
+          )}
           {course.stops.map((s, i) => {
             const leg = course.legs[i];
             return (
@@ -126,6 +142,9 @@ export default function ResultScreen({ course, onChange, onBack }: Props) {
                         <Text style={styles.name}>{s.place.name}</Text>
                         <Text style={styles.small}>{s.place.description}</Text>
                       </View>
+                      <Pressable onPress={() => remove(i)} disabled={busy} hitSlop={10} accessibilityLabel={`${s.place.name} 삭제`}>
+                        <Text style={styles.remove}>✕</Text>
+                      </Pressable>
                     </View>
                     {s.pinned && (
                       <Text style={styles.badge}>{s.fixedTime ? '🔒 시간 고정' : s.reason === '직접 추가한 곳' ? '📍 직접 추가' : '📌 꼭 갈 곳'}</Text>
@@ -171,6 +190,7 @@ const styles = StyleSheet.create({
   badge: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, overflow: 'hidden', backgroundColor: colors.accentSoft, color: '#ff9aac', fontSize: 12 },
   reason: { color: '#cfcfd6', fontSize: 13, marginTop: 8 },
   leg: { color: colors.muted, fontSize: 13, marginLeft: 64, paddingTop: 10 },
+  remove: { color: colors.muted, fontSize: 16, paddingHorizontal: 2 },
   addButton: { marginLeft: 64, paddingVertical: 8 },
   addButtonText: { color: colors.accent, fontSize: 13, fontWeight: '700' },
   addPanel: { marginLeft: 64, marginVertical: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.accentSoft },

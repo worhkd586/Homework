@@ -230,11 +230,7 @@ export class RuleBasedRecommender implements CourseRecommender {
 
   async insertStop(course: Course, index: number, place?: Place): Promise<Course> {
     const request = course.request;
-    const planned: Planned[] = course.stops.map((s) => ({
-      place: s.place,
-      pin: s.pinned ? { place: s.place, fixedMinute: s.fixedTime ? s.arriveMinute : undefined } : undefined,
-      reason: s.reason,
-    }));
+    const planned = toPlanned(course);
     const at = Math.max(0, Math.min(index, planned.length));
     const prev = planned[at - 1];
     const next = planned[at];
@@ -266,6 +262,16 @@ export class RuleBasedRecommender implements CourseRecommender {
       planned.splice(at, 0, { place: best.place, reason: parts.join(' · ') });
     }
 
+    return this.reschedule(course, planned);
+  }
+
+  async removeStop(course: Course, index: number): Promise<Course> {
+    const planned = toPlanned(course).filter((_, i) => i !== index);
+    return this.reschedule(course, planned);
+  }
+
+  /** 정해진 순서 그대로 이동시간을 다시 재고 30분 단위 시간표를 다시 짠다 */
+  private async reschedule(course: Course, planned: Planned[]): Promise<Course> {
     const legs: CourseLeg[] = [];
     for (let i = 1; i < planned.length; i++) {
       legs.push({
@@ -274,10 +280,21 @@ export class RuleBasedRecommender implements CourseRecommender {
         travel: await this.routes.estimateTravel(planned[i - 1].place.location, planned[i].place.location),
       });
     }
-    const warnings: CourseWarning[] = course.warnings.filter((w) => w.kind === 'outside-region');
-    const stops = schedule(planned, legs, request, warnings);
+    const keptIds = new Set(planned.map((p) => p.place.id));
+    const warnings: CourseWarning[] = course.warnings.filter(
+      (w) => w.kind === 'outside-region' && course.request.pins.some((p) => keptIds.has(p.place.id) && w.message.includes(p.place.name)),
+    );
+    const stops = schedule(planned, legs, course.request, warnings);
     return { ...course, stops, legs, warnings, totalTravelMinutes: legs.reduce((sum, l) => sum + l.travel.minutes, 0) };
   }
+}
+
+function toPlanned(course: Course): Planned[] {
+  return course.stops.map((s) => ({
+    place: s.place,
+    pin: s.pinned ? { place: s.place, fixedMinute: s.fixedTime ? s.arriveMinute : undefined } : undefined,
+    reason: s.reason,
+  }));
 }
 
 function distribute(items: Item[], fixedPins: PinnedPlace[], start: number, end: number) {

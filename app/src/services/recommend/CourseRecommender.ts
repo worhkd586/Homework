@@ -12,4 +12,6 @@ export interface CourseRecommender {
    * place를 주면 그곳을, 없으면 그 자리에 어울리는 곳을 추천해서 넣는다. 시간표는 다시 계산한다.
    */
   insertStop(course: Course, index: number, place?: Place): Promise<Course>;
+  /** 결과 코스에서 index번째 일정을 빼고 시간표를 다시 계산한다. */
+  removeStop(course: Course, index: number): Promise<Course>;
 }
