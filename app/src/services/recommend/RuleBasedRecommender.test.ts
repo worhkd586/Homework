@@ -79,6 +79,24 @@ describe('RuleBasedRecommender', () => {
   });
 });
 
+describe('30분 단위 시간표', () => {
+  it('snaps every arrival and departure to :00 or :30', async () => {
+    const pasta = byName('붉은벽돌 파스타');
+    for (const req of [
+      base(),
+      base({ pins: [{ place: pasta, fixedMinute: 19 * 60 }] }),
+      base({ regionId: 'jamsil', slotId: 'night', startMinute: 19 * 60, endMinute: 24 * 60 }),
+      base({ regionId: 'hongdae', slotId: 'lunch', startMinute: 11 * 60 + 30, endMinute: 15 * 60 }),
+    ]) {
+      const course = await recommender.recommend(req);
+      for (const s of course.stops) {
+        expect(s.arriveMinute % 30).toBe(0);
+        expect(s.leaveMinute % 30).toBe(0);
+      }
+    }
+  });
+});
+
 describe('isOpenDuring', () => {
   it('handles places open past midnight', () => {
     const bar = byName('을지로 LP바'); // 18:00–02:00

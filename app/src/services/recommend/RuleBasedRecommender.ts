@@ -195,15 +195,29 @@ export class RuleBasedRecommender implements CourseRecommender {
     }
 
     // 4) 실제 이동시간으로 시간표를 확정하고 충돌을 알린다.
-    const legs: CourseLeg[] = [];
-    for (let i = 1; i < planned.length; i++) {
-      legs.push({
-        fromPlaceId: planned[i - 1].place.id,
-        toPlaceId: planned[i].place.id,
-        travel: await this.routes.estimateTravel(planned[i - 1].place.location, planned[i].place.location),
-      });
+    //    30분 단위로 맞추다 끝 시각을 넘기면, 꼭 갈 곳이 아닌 일정을 (산책·쇼핑 먼저) 하나씩 뺀다.
+    let legs: CourseLeg[] = [];
+    let stops: CourseStop[] = [];
+    let scheduleWarnings: CourseWarning[] = [];
+    for (;;) {
+      legs = [];
+      for (let i = 1; i < planned.length; i++) {
+        legs.push({
+          fromPlaceId: planned[i - 1].place.id,
+          toPlaceId: planned[i].place.id,
+          travel: await this.routes.estimateTravel(planned[i - 1].place.location, planned[i].place.location),
+        });
+      }
+      scheduleWarnings = [];
+      stops = schedule(planned, legs, request, scheduleWarnings);
+      const overEnd = stops.length > 0 && stops[stops.length - 1].leaveMinute > request.endMinute;
+      if (!overEnd) break;
+      let drop = planned.findLastIndex((p) => !p.pin && LIGHT.includes(p.place.category));
+      if (drop < 0) drop = planned.findLastIndex((p) => !p.pin);
+      if (drop < 0) break;
+      planned.splice(drop, 1);
     }
-    const stops = schedule(planned, legs, request, warnings);
+    warnings.push(...scheduleWarnings);
 
     return {
       title: `${region.name} ${slot.label} 코스`,
@@ -245,34 +259,38 @@ function distribute(items: Item[], fixedPins: PinnedPlace[], start: number, end:
   return { buckets, overflow };
 }
 
+/** 시간표는 30분 단위(:00 / :30)로 맞춘다 */
+const STEP = 30;
+const ceilStep = (m: number) => Math.ceil(m / STEP) * STEP;
+const floorStep = (m: number) => Math.floor(m / STEP) * STEP;
+const roundStep = (m: number) => Math.max(STEP, Math.round(m / STEP) * STEP);
+
 function schedule(planned: Planned[], legs: CourseLeg[], req: CourseRequest, warnings: CourseWarning[]): CourseStop[] {
   const stops: CourseStop[] = [];
-  let cursor = req.startMinute;
+  let cursor = ceilStep(req.startMinute);
   for (let i = 0; i < planned.length; i++) {
     const { place, pin, reason } = planned[i];
     const travelIn = i > 0 ? legs[i - 1].travel.minutes : 0;
-    let arrive = cursor + travelIn;
+    const earliest = cursor + travelIn;
+    let arrive = ceilStep(earliest);
     const fixed = pin?.fixedMinute;
     if (fixed !== undefined) {
-      if (i > 0 && arrive > fixed) {
+      if (i > 0 && earliest > fixed) {
         const prev = planned[i - 1].place;
-        const suggest = Math.ceil(arrive / 10) * 10;
         warnings.push({
           kind: 'tight',
-          message: `${prev.name} → ${place.name} 이동이 ${travelIn}분이라 ${formatMinute(fixed)} 도착이 빠듯해요. ${place.name}을(를) ${formatMinute(suggest)}로 미룰까요?`,
+          message: `${prev.name} → ${place.name} 이동이 ${travelIn}분이라 ${formatMinute(fixed)} 도착이 빠듯해요. ${place.name}을(를) ${formatMinute(ceilStep(earliest))}로 미룰까요?`,
         });
-      } else if (i > 0) {
-        stops[i - 1].slackMinutes = fixed - arrive;
       }
       arrive = fixed;
     }
 
-    let stay = stayOf(place);
+    let stay = roundStep(stayOf(place));
     // 다음이 시간 고정이거나 마지막이면, 체류시간을 줄여서라도 맞춘다
     const nextFixed = planned[i + 1]?.pin?.fixedMinute;
-    const limit = nextFixed !== undefined ? nextFixed - legs[i].travel.minutes : i === planned.length - 1 ? req.endMinute : undefined;
+    const limit = nextFixed !== undefined ? floorStep(nextFixed - legs[i].travel.minutes) : i === planned.length - 1 ? req.endMinute : undefined;
     if (limit !== undefined && fixed === undefined && arrive + stay > limit) {
-      stay = Math.max(minStay(stayOf(place)), limit - arrive);
+      stay = Math.max(roundStep(minStay(stayOf(place))), floorStep(limit - arrive));
     }
     const leave = arrive + stay;
     if (i === planned.length - 1 && leave > req.endMinute) {
@@ -289,6 +307,10 @@ function schedule(planned: Planned[], legs: CourseLeg[], req: CourseRequest, war
     }
     stops.push({ place, arriveMinute: arrive, leaveMinute: leave, pinned: !!pin, fixedTime: fixed !== undefined, slackMinutes: 0, reason });
     cursor = leave;
+  }
+  // 이동하고 남는 시간 = 여유
+  for (let i = 0; i < stops.length - 1; i++) {
+    stops[i].slackMinutes = Math.max(0, stops[i + 1].arriveMinute - stops[i].leaveMinute - legs[i].travel.minutes);
   }
   return stops;
 }
