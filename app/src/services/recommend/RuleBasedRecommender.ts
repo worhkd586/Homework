@@ -169,14 +169,21 @@ export class RuleBasedRecommender implements CourseRecommender {
       let best: { place: Place; score: number; travel: number; mode: string } | undefined;
       for (const category of [item.category, ...(ALTERNATES[item.category] ?? []), ...LAST_RESORT]) {
         if (best) break;
-        const pool = candidates.filter((p) => p.category === category && !used.has(p.id) && !excluded.has(p.id));
+        let pool = candidates.filter((p) => p.category === category && !used.has(p.id) && !excluded.has(p.id));
+        // 고른 주제 자리면 주제에 맞는 곳만. 정말 없을 때만 마지막 대안(산책·술·카페)으로 채운다.
+        const match = (request.wishes ?? []).filter((w) => w.category === item.category && w.match.length).flatMap((w) => w.match);
+        if (match.length) {
+          const strict = pool.filter((p) => matchesTheme(p, match));
+          if (strict.length || !LAST_RESORT.includes(category) || category === item.category) pool = strict;
+        }
         for (const place of pool) {
           const toHere = await this.routes.estimateTravel(prevLoc, place.location);
           const arrive = clock + (planned.length ? toHere.minutes : 0);
           if (!isOpenDuring(place, arrive, arrive + minStay(stay))) continue;
           const toNext = nextPin ? (await this.routes.estimateTravel(place.location, nextPin.pin.place.location)).minutes : 0;
           const prefHits = place.tags.filter((t) => request.preferences.includes(t)).length + (matchesKeyword(place, request.keywords) ? 2 : 0);
-          const score = place.rating * 12 + prefHits * 8 - toHere.minutes * 0.8 - toNext * 0.4 - (avoided.has(place.id) ? 40 : 0);
+          const score =
+            place.rating * 20 + (isFlagship(place) ? 25 : 0) + prefHits * 8 - toHere.minutes * 0.8 - toNext * 0.4 - (avoided.has(place.id) ? 40 : 0);
           if (!best || score > best.score) best = { place, score, travel: toHere.minutes, mode: toHere.mode };
         }
       }
@@ -189,7 +196,7 @@ export class RuleBasedRecommender implements CourseRecommender {
       }
       used.add(best.place.id);
       const prefs = best.place.tags.filter((t) => request.preferences.includes(t));
-      const parts = [`${CATEGORY_LABEL[best.place.category]} · ★${best.place.rating.toFixed(1)}`];
+      const parts = [`${CATEGORY_LABEL[best.place.category]} · ${popularityLabel(best.place)}`];
       if (prefs.length) parts.push(prefs.map((t) => `‘${t}’`).join(' ') + ' 취향');
       planned.push({ place: best.place, reason: parts.join(' · ') });
       clock += (planned.length > 1 ? best.travel : 0) + stay;
@@ -255,13 +262,13 @@ export class RuleBasedRecommender implements CourseRecommender {
         if (!isOpenDuring(candidate, arrive, arrive + minStay(stayOf(candidate)))) continue;
         const toNext = next ? (await this.routes.estimateTravel(candidate.location, next.place.location)).minutes : 0;
         const score =
-          candidate.rating * 12 + (usedCategories.has(candidate.category) ? 0 : 10) - (toHere?.minutes ?? 0) * 0.8 - toNext * 0.8;
+          candidate.rating * 20 + (isFlagship(candidate) ? 25 : 0) + (usedCategories.has(candidate.category) ? 0 : 10) - (toHere?.minutes ?? 0) * 0.8 - toNext * 0.8;
         if (!best || score > best.score) best = { place: candidate, score, travel: toHere?.minutes, mode: toHere?.mode };
       }
       if (!best) {
         return { ...course, warnings: [...course.warnings, { kind: 'unfilled', message: '그 시간에 열려 있는 추천 장소를 찾지 못했어요.' }] };
       }
-      const parts = [`추천 · ${CATEGORY_LABEL[best.place.category]} · ★${best.place.rating.toFixed(1)}`];
+      const parts = [`추천 · ${CATEGORY_LABEL[best.place.category]} · ${popularityLabel(best.place)}`];
       planned.splice(at, 0, { place: best.place, reason: parts.join(' · ') });
     }
 
@@ -319,6 +326,33 @@ export class RuleBasedRecommender implements CourseRecommender {
     const stops = schedule(planned, legs, course.request, warnings);
     return { ...course, stops, legs, warnings, totalTravelMinutes: legs.reduce((sum, l) => sum + l.travel.minutes, 0) };
   }
+}
+
+/** 누구나 아는 대표 명소: 같은 조건이면 먼저 고른다 */
+const FLAGSHIPS = [
+  '국립중앙박물관', '리움', '국립현대미술관', '서울시립미술관', '석파정', '서울미술관', '아모레퍼시픽미술관', '대림미술관', '디뮤지엄',
+  '그라운드시소', '롯데뮤지엄', '예술의전당', '동대문디자인플라자', '국립민속박물관', '국립고궁박물관', '서울역사박물관', '국립한글박물관',
+  '전쟁기념관', '호암미술관', '송은', '아라리오뮤지엄', '경기도미술관', '백남준아트센터', '수원시립미술관', '뮤지엄산', '박서보',
+  '롯데월드', '에버랜드', '서울랜드', '아쿠아리움', '서울스카이', 'N서울타워', '서울대공원', '석촌호수', '서울숲', '한강공원', '경복궁',
+  '창덕궁', '덕수궁', '화성행궁', '헤이리', '두물머리', '스타필드', '더현대',
+];
+
+export function isFlagship(place: Place): boolean {
+  return FLAGSHIPS.some((f) => place.name.includes(f));
+}
+
+/** 이름이나 분류(태그)에 주제 말이 들어가는지 */
+export function matchesTheme(place: Place, words: string[]): boolean {
+  const text = `${place.name} ${place.tags.join(' ')}`.toLowerCase();
+  return words.some((w) => text.includes(w.toLowerCase()));
+}
+
+/** 화면에 보일 인기 표시: 후기 수를 알면 후기 수, 모르면 점수 */
+export function popularityLabel(place: Place): string {
+  if (place.reviewCount === undefined) return `★${place.rating.toFixed(1)}`;
+  const n = place.reviewCount;
+  const short = n >= 10000 ? `${(n / 10000).toFixed(n >= 100000 ? 0 : 1)}만` : n >= 1000 ? `${(n / 1000).toFixed(1)}천` : String(n);
+  return `후기 ${short.replace('.0', '')}`;
 }
 
 function matchesKeyword(place: Place, keywords: string[] | undefined): boolean {

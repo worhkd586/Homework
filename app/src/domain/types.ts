@@ -18,6 +18,12 @@ export interface Region {
   name: string;
   tagline: string;
   center: LatLng;
+  /** 지역 고르기 화면의 묶음 */
+  group?: '서울' | '경기';
+  /** 장소를 찾을 반경(m). 교외는 넓게 */
+  radius?: number;
+  /** 이 동네가 잘하는 것 (지역 추천의 1차 후보를 고를 때 씀) */
+  strengths?: string[];
 }
 
 export interface Place {
@@ -26,8 +32,10 @@ export interface Place {
   regionId: string;
   category: PlaceCategory;
   location: LatLng;
-  /** 0~5 */
+  /** 0~5. 실제 데이터에서는 블로그 후기 수로 계산한 인기 점수 */
   rating: number;
+  /** 블로그 후기 수 (실제 데이터일 때) */
+  reviewCount?: number;
   /** 영업 시작/종료, 분 단위 (0 = 00:00). close가 open보다 작으면 자정을 넘김 */
   openMinute: number;
   closeMinute: number;
@@ -82,6 +90,8 @@ export interface CourseRequest {
   avoidPlaceIds?: string[];
   /** 이 말이 장소 이름·설명·태그에 들어가면 우선 (하고 싶은 것 직접 입력 등) */
   keywords?: string[];
+  /** 고른 주제: 이 종류 자리에는 match 말이 이름·분류에 들어간 곳만 (있을 때) 넣는다 */
+  wishes?: Array<{ category: PlaceCategory; match: string[] }>;
   /** 시간대 기본 흐름 대신 쓸 흐름 (기분별 코스 템플릿) */
   flow?: PlaceCategory[];
   /** 코스 이름 (없으면 "지역 시간대 코스") */

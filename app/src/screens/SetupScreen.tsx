@@ -9,6 +9,8 @@ import { ACTIVITY_EXAMPLES, parseActivity, type Activity } from '../domain/activ
 import { CATEGORY_EMOJI, CATEGORY_LABEL, TIME_SLOTS, formatMinute, getTimeSlot } from '../domain/timeSlots';
 import { placeProvider, recommender } from '../lib/services';
 import { colors } from '../ui/theme';
+import PlacePhoto from '../ui/PlacePhoto';
+import { popularityLabel } from '../services/recommend/RuleBasedRecommender';
 
 export interface CourseOptions {
   options: Course[];
@@ -35,6 +37,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
   const [wishHint, setWishHint] = useState<string>();
   const [regions, setRegions] = useState<Region[]>([]);
   const [regionId, setRegionId] = useState<string>();
+  const [group, setGroup] = useState<'서울' | '경기'>('서울');
   const [slotId, setSlotId] = useState<TimeSlotId>('evening');
   const [places, setPlaces] = useState<Place[]>([]);
   const [mustGo, setMustGo] = useState<PinnedPlace | null>(null);
@@ -57,7 +60,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
     setWishHint(
       parsed.known
         ? undefined
-        : `‘${parsed.label}’은(는) 아직 장소 목록에 없어서 비슷한 체험 장소로 찾아볼게요.`,
+        : `‘${parsed.label}’(으)로 카카오맵에서 직접 찾아서 넣어 볼게요.`,
     );
     setWish('');
   }
@@ -99,6 +102,8 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
         note = `✨ ${region.name} 추천 · ${suggestion.reason}`;
       }
       if (!region) return;
+      // 직접 입력한 것은 카카오에서 그 말로 찾아서 후보에 더한다 (예: '도자기', '요트')
+      await Promise.all(activities.filter((a) => a.emoji === '✍️').map((a) => placeProvider.addWishPlaces?.(a.label, region!.id)));
       const options = await recommendOptions(
         recommender,
         {
@@ -209,6 +214,13 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
         {wishHint && <Text style={styles.small}>{wishHint}</Text>}
 
         <Text style={styles.h2}>어디서 만나요?</Text>
+        <View style={[styles.row, { marginBottom: 10 }]}>
+          {(['서울', '경기'] as const).map((g) => (
+            <Pressable key={g} style={[styles.groupTab, group === g && styles.groupTabOn]} onPress={() => setGroup(g)}>
+              <Text style={[styles.groupTabText, group === g && { color: colors.bg }]}>{g}</Text>
+            </Pressable>
+          ))}
+        </View>
         <View style={styles.grid}>
           <Pressable style={[styles.tile, regionId === AUTO && styles.selected]} onPress={() => setRegionId(AUTO)}>
             <Text style={styles.tileTitle}>✨ 추천해 줘</Text>
@@ -216,7 +228,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
               기분에 맞는 동네로
             </Text>
           </Pressable>
-          {regions.map((r) => (
+          {regions.filter((r) => (r.group ?? '서울') === group).map((r) => (
             <Pressable key={r.id} style={[styles.tile, regionId === r.id && styles.selected]} onPress={() => setRegionId(r.id)}>
               <Text style={styles.tileTitle}>{r.name}</Text>
               <Text style={styles.small} numberOfLines={1}>
@@ -282,11 +294,11 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
                   setQuery('');
                 }}
               >
-                <Text style={styles.slotEmoji}>{CATEGORY_EMOJI[p.category]}</Text>
+                <PlacePhoto place={p} size={40} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.tileTitle}>{p.name}</Text>
                   <Text style={styles.small} numberOfLines={1}>
-                    {CATEGORY_LABEL[p.category]} · ★{p.rating.toFixed(1)} · {p.description}
+                    {CATEGORY_LABEL[p.category]} · {popularityLabel(p)} · {p.description}
                   </Text>
                 </View>
               </Pressable>
@@ -327,6 +339,9 @@ const styles = StyleSheet.create({
   tileTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   selected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   row: { flexDirection: 'row', gap: 8 },
+  groupTab: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
+  groupTabOn: { backgroundColor: colors.text, borderColor: colors.text },
+  groupTabText: { color: colors.text, fontSize: 14, fontWeight: '700' },
   slot: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent' },
   slotEmoji: { fontSize: 22 },
   card: { padding: 14, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent' },

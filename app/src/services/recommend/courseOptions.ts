@@ -19,7 +19,7 @@ export async function suggestRegion(
   const keywords = activities.flatMap((a) => a.keywords).map((k) => k.toLowerCase());
   const label = [mood?.label, ...activities.map((a) => a.label)].filter(Boolean).join(', ');
   let best: { region: Region; score: number; hits: number } | undefined;
-  for (const region of await places.listRegions()) {
+  for (const region of await shortlist(await places.listRegions(), moodId, activities)) {
     const list = await places.listPlaces(region.id);
     const matches = list.filter((p) => wanted.has(p.category));
     const keywordHits = list.filter((p) => keywords.some((k) => `${p.name} ${p.description} ${p.tags.join(' ')}`.toLowerCase().includes(k))).length;
@@ -31,6 +31,38 @@ export async function suggestRegion(
   }
   if (!best) throw new Error('지역 정보가 없어요');
   return { region: best.region, reason: `‘${label}’에 맞는 곳이 ${best.hits}곳 모여 있어요` };
+}
+
+/** 기분별로 잘 맞는 동네 특징 */
+const MOOD_WORDS: Record<MoodId, string[]> = {
+  talk: ['카페', '산책', '한옥', '술', '와인', '호수'],
+  new: ['전시', '미술관', '공방', '체험', '팝업', '박물관'],
+  food: ['맛집', '카페', '노포', '술'],
+  active: ['방탈출', '놀이공원', '게임', '레저', '보드게임', '테마파크'],
+};
+
+/**
+ * 지역이 많아서 전부 실제 장소를 불러오면 느리고 쿼터도 많이 쓴다.
+ * 동네 특징(strengths)으로 먼저 3곳만 추린 뒤, 그 3곳만 실제 장소로 점수를 매긴다.
+ */
+export function shortlist(regions: Region[], moodId: MoodId | undefined, activities: Activity[], size = 3): Region[] {
+  if (regions.length <= size) return regions;
+  const words = [
+    ...(moodId ? MOOD_WORDS[moodId] : []),
+    ...activities.flatMap((a) => [a.label, ...a.keywords, ...(a.match ?? [])]),
+  ].map((w) => w.toLowerCase());
+  const scored = regions.map((r, i) => {
+    const text = `${r.name} ${r.tagline}`.toLowerCase();
+    const strengths = (r.strengths ?? []).map((s) => s.toLowerCase());
+    const hits = strengths.filter((s) => words.some((w) => w.includes(s) || s.includes(w))).length;
+    const named = words.some((w) => w.length >= 2 && text.includes(w)) ? 3 : 0; // '석촌호수 야경'처럼 동네 이름을 말하면
+    const nameHit = activities.some((a) => a.label.split(' ').some((part) => part.length >= 2 && text.includes(part.toLowerCase()))) ? 5 : 0;
+    return { r, score: hits + named + nameHit, i };
+  });
+  return scored
+    .sort((a, b) => b.score - a.score || a.i - b.i)
+    .slice(0, size)
+    .map((x) => x.r);
 }
 
 /** 기분을 안 골랐을 때 쓰는 기본 코스 3개 */
@@ -68,6 +100,7 @@ export async function recommendOptions(
       title: `${regionName} · ${template.name}`,
       preferences: mood?.preferences ?? [],
       keywords: activities.flatMap((a) => a.keywords),
+      wishes: activities.filter((a) => a.match?.length).map((a) => ({ category: a.category, match: a.match! })),
       avoidPlaceIds: [...used],
     };
     const key = (c: Course) => c.stops.map((s) => s.place.id).join(',');

@@ -2,9 +2,11 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Course, Place } from '../domain/types';
-import { CATEGORY_EMOJI, CATEGORY_LABEL, formatMinute, getTimeSlot } from '../domain/timeSlots';
+import { CATEGORY_LABEL, formatMinute, getTimeSlot } from '../domain/timeSlots';
 import { dataSourceNote, placeProvider, recommender } from '../lib/services';
 import { colors } from '../ui/theme';
+import PlacePhoto from '../ui/PlacePhoto';
+import { popularityLabel } from '../services/recommend/RuleBasedRecommender';
 
 interface Props {
   options: Course[];
@@ -87,11 +89,11 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
           <TextInput style={styles.input} placeholder="장소 이름 검색" placeholderTextColor={colors.muted} value={query} onChangeText={setQuery} />
           {choices.map((p) => (
             <Pressable key={p.id} style={styles.placeRow} onPress={() => onPick(p)}>
-              <Text style={styles.emoji}>{CATEGORY_EMOJI[p.category]}</Text>
+              <PlacePhoto place={p} size={44} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{p.name}</Text>
                 <Text style={styles.small} numberOfLines={1}>
-                  {CATEGORY_LABEL[p.category]} · ★{p.rating.toFixed(1)} · {p.description}
+                  {CATEGORY_LABEL[p.category]} · {popularityLabel(p)} · {p.description}
                 </Text>
               </View>
             </Pressable>
@@ -182,7 +184,11 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
                   setPanel(null);
                 }}
               >
-                <Text style={styles.optionEmoji}>{o.stops.map((s) => CATEGORY_EMOJI[s.place.category]).join(' ')}</Text>
+                <View style={styles.optionPhotos}>
+                  {o.stops.slice(0, 4).map((s) => (
+                    <PlacePhoto key={s.place.id} place={s.place} size={34} />
+                  ))}
+                </View>
                 <Text style={styles.name} numberOfLines={2}>
                   {optionName(o)}
                 </Text>
@@ -224,7 +230,7 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
                   </View>
                   <Pressable style={[styles.card, editing && styles.cardOn]} onPress={() => open({ kind: 'edit', index: i })} accessibilityLabel={`${s.place.name} 수정`}>
                     <View style={styles.cardHead}>
-                      <Text style={styles.emoji}>{CATEGORY_EMOJI[s.place.category]}</Text>
+                      <PlacePhoto place={s.place} size={64} />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.name}>{s.place.name}</Text>
                         <Text style={styles.small}>{s.place.description}</Text>
@@ -289,6 +295,7 @@ const styles = StyleSheet.create({
   cardOn: { borderColor: colors.accent },
   cardHead: { flexDirection: 'row', gap: 10 },
   emoji: { fontSize: 24 },
+  optionPhotos: { flexDirection: 'row', gap: 4 },
   name: { color: colors.text, fontSize: 16, fontWeight: '700' },
   editHint: { color: colors.muted, fontSize: 12, marginTop: 2 },
   badge: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, overflow: 'hidden', backgroundColor: colors.accentSoft, color: '#ff9aac', fontSize: 12 },

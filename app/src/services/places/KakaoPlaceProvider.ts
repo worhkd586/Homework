@@ -1,6 +1,7 @@
 import type { Place, PlaceCategory, Region } from '../../domain/types';
+import { ALL_REGIONS } from '../../domain/regions';
 import type { PlaceProvider } from './PlaceProvider';
-import { REGIONS, defaultStayMinutes } from './mockData';
+import { defaultStayMinutes } from './mockData';
 
 /** 프록시(proxy/worker.js)가 돌려주는 카카오 장소 한 건 */
 export interface KakaoDoc {
@@ -14,49 +15,83 @@ export interface KakaoDoc {
   y: string;
   place_url: string;
   phone: string;
+  /** 다음 블로그 검색 결과 수 (프록시가 셀 수 있었을 때만) */
+  review_count?: number;
 }
 
-const CATEGORIES: PlaceCategory[] = ['restaurant', 'cafe', 'culture', 'activity', 'walk', 'shop', 'bar'];
+/** 프록시의 검색 묶음 → 앱의 장소 종류 */
+const KINDS: Array<{ kind: string; category: PlaceCategory }> = [
+  { kind: 'restaurant', category: 'restaurant' },
+  { kind: 'cafe', category: 'cafe' },
+  { kind: 'culture', category: 'culture' },
+  { kind: 'activity', category: 'activity' },
+  { kind: 'leisure', category: 'activity' },
+  { kind: 'walk', category: 'walk' },
+  { kind: 'shop', category: 'shop' },
+  { kind: 'bar', category: 'bar' },
+];
 
 /**
  * 카카오는 평점·영업시간을 주지 않는다. 그래서
- * - 평점 대신 카카오의 정확도 순위로 4.8부터 조금씩 낮춘 점수를 쓰고
+ * - 평점 대신 블로그 후기 수로 인기 점수를 매기고 (후기 수를 모르면 카카오 검색 순위로)
  * - 영업시간은 종류별로 흔한 시간으로 가정한다 (실제와 다를 수 있음 → 화면에 안내)
  */
 const ASSUMED_HOURS: Record<PlaceCategory, [number, number]> = {
   restaurant: [11 * 60, 22 * 60],
   cafe: [10 * 60, 22 * 60],
-  culture: [10 * 60, 19 * 60],
+  culture: [10 * 60, 18 * 60],
   activity: [11 * 60, 22 * 60],
   walk: [0, 24 * 60],
   shop: [11 * 60, 21 * 60],
   bar: [18 * 60, 26 * 60],
 };
 
+/** 주제와 상관없는데 검색에 섞여 들어오는 곳 (종류별). 이름이나 카카오 분류에 이 말이 있으면 뺀다. */
+const EXCLUDE: Partial<Record<PlaceCategory, RegExp>> = {
+  culture: /화방|화랑|공예|학원|영화관|CGV|롯데시네마|메가박스|교육|사무소|협회/,
+  cafe: /만화카페|스터디카페|키즈카페|PC방|보드카페|룸카페|무인/,
+  activity: /학원|재료|도매|자동차|정비|부동산|교습/,
+  walk: /명예도로|상점가|푸드트럭|먹자골목|주차장/,
+  shop: /인테리어|가구|철물|도매|부동산|공구|자재|생활용품|마트|슈퍼|다이소|약국/,
+};
+
+/** 후기가 이보다 적으면 (같은 종류에 다른 후보가 충분할 때) 뺀다 */
+const MIN_REVIEWS = 10;
+
 /** 카카오 분류 → 앱의 장소 종류 */
 export function categoryOf(doc: KakaoDoc, hint?: PlaceCategory): PlaceCategory {
   const name = doc.category_name;
   if (/술집|와인|칵테일|바$|호프|이자카야|포장마차/.test(name)) return 'bar';
+  // '방탈출카페'·'보드카페'는 카카오에서 카페로도 분류되지만 앱에서는 놀거리다
+  if (/방탈출|보드카페|보드게임|VR/.test(`${name} ${doc.place_name}`)) return 'activity';
   if (doc.category_group_code === 'CE7' || /카페|디저트|제과|베이커리/.test(name)) return 'cafe';
   if (doc.category_group_code === 'FD6') return 'restaurant';
-  if (doc.category_group_code === 'CT1' || /미술관|박물관|전시|공연|영화/.test(name)) return 'culture';
+  if (/미술관|박물관|전시|공연|영화|기념관/.test(name)) return 'culture';
+  if (/테마파크|놀이|아쿠아리움|동물원|공방|방탈출|보드게임|볼링|오락|체험|스포츠|레저|클라이밍/.test(name)) return 'activity';
+  if (doc.category_group_code === 'CT1') return 'culture';
   if (doc.category_group_code === 'AT4' || /공원|산책|관광|명소/.test(name)) return 'walk';
-  if (/공방|방탈출|보드게임|볼링|오락|체험|스포츠|레저|테마파크/.test(name)) return 'activity';
-  if (/소품|잡화|쇼핑|패션|팝업/.test(name)) return 'shop';
+  if (/소품|잡화|쇼핑|패션|팝업|백화점/.test(name)) return 'shop';
   return hint ?? 'activity';
+}
+
+/** 블로그 후기 수 → 0~5 점수 (10곳 3.9 · 100곳 4.25 · 1천 4.6 · 1만 5.0) */
+export function popularityScore(reviews: number): number {
+  return Math.min(5, 3.5 + Math.log10(reviews + 1) * 0.375);
 }
 
 export function toPlace(doc: KakaoDoc, regionId: string, rank: number, hint?: PlaceCategory): Place {
   const category = categoryOf(doc, hint);
   const parts = doc.category_name.split('>').map((s) => s.trim()).filter(Boolean);
   const [open, close] = ASSUMED_HOURS[category];
+  const reviews = typeof doc.review_count === 'number' ? doc.review_count : undefined;
   return {
     id: `kakao-${doc.id}`,
     name: doc.place_name,
     regionId,
     category,
     location: { lat: Number(doc.y), lng: Number(doc.x) },
-    rating: Math.max(3.8, 4.8 - rank * 0.05),
+    rating: reviews !== undefined ? popularityScore(reviews) : Math.max(3.8, 4.6 - rank * 0.05),
+    reviewCount: reviews,
     openMinute: open,
     closeMinute: close,
     stayMinutes: defaultStayMinutes(category),
@@ -66,49 +101,92 @@ export function toPlace(doc: KakaoDoc, regionId: string, rank: number, hint?: Pl
   };
 }
 
+/** 주제와 상관없는 곳을 빼고, 후기가 너무 적은 곳은 (대신할 곳이 있으면) 뺀다 */
+export function curate(places: Place[]): Place[] {
+  const relevant = places.filter((p) => {
+    const text = `${p.name} ${p.tags.join(' ')}`;
+    if (p.category === 'shop' && /소품|잡화|선물|편집|팝업|문구/.test(text)) return true; // 생활용품점으로 분류된 소품샵은 살린다
+    return !EXCLUDE[p.category]?.test(text);
+  });
+  const out: Place[] = [];
+  for (const category of new Set(relevant.map((p) => p.category))) {
+    const group = relevant.filter((p) => p.category === category);
+    const popular = group.filter((p) => p.reviewCount === undefined || p.reviewCount >= MIN_REVIEWS);
+    out.push(...(popular.length >= 5 ? popular : group));
+  }
+  return out.sort((a, b) => b.rating - a.rating);
+}
+
+/** 블로그·사진 검색에 쓸 이름: 가게 이름 + 동 이름 (같은 이름의 다른 지점과 헷갈리지 않게) */
+export function lookupName(place: Place): string {
+  const address = place.description.split(' · ').pop() ?? '';
+  const parts = address.split(' ');
+  const area = parts.find((p, i) => i >= 1 && /[동읍면가]$|구$/.test(p)) ?? '';
+  return `${place.name} ${area}`.trim();
+}
+
 /** 프록시를 거쳐 카카오 로컬 API로 실제 장소를 가져온다. 지역별로 한 번 가져와서 기억해 둔다. */
 export class KakaoPlaceProvider implements PlaceProvider {
   readonly name = 'kakao';
   private readonly cache = new Map<string, Promise<Place[]>>();
+  /** 직접 입력한 주제로 검색해서 찾은 곳 (그 지역 후보에 더한다) */
+  private readonly extras = new Map<string, Place[]>();
+  private readonly photos = new Map<string, Promise<string | undefined>>();
 
   constructor(
     private readonly proxyUrl: string,
-    private readonly regions: Region[] = REGIONS,
+    private readonly regions: Region[] = ALL_REGIONS,
     private readonly fetchImpl: typeof fetch = (...args) => fetch(...args),
   ) {}
 
-  private async get(path: string, params: Record<string, string>): Promise<KakaoDoc[]> {
+  private async getJson<T>(path: string, params: Record<string, string>): Promise<T> {
     const url = `${this.proxyUrl.replace(/\/$/, '')}${path}?${new URLSearchParams(params)}`;
     const res = await this.fetchImpl(url);
     if (!res.ok) throw new Error(`장소 서버 오류 (${res.status})`);
-    const body = (await res.json()) as { documents?: KakaoDoc[] };
-    return body.documents ?? [];
+    return (await res.json()) as T;
+  }
+
+  private async get(path: string, params: Record<string, string>): Promise<KakaoDoc[]> {
+    return (await this.getJson<{ documents?: KakaoDoc[] }>(path, params)).documents ?? [];
   }
 
   async listRegions(): Promise<Region[]> {
     return this.regions;
   }
 
-  listPlaces(regionId: string): Promise<Place[]> {
-    const cached = this.cache.get(regionId);
-    if (cached) return cached;
-    const task = this.load(regionId);
-    this.cache.set(regionId, task);
-    task.catch(() => this.cache.delete(regionId)); // 실패하면 다음에 다시 시도
-    return task;
+  async listPlaces(regionId: string): Promise<Place[]> {
+    let task = this.cache.get(regionId);
+    if (!task) {
+      task = this.load(regionId);
+      this.cache.set(regionId, task);
+      task.catch(() => this.cache.delete(regionId)); // 실패하면 다음에 다시 시도
+    }
+    const base = await task;
+    const extra = this.extras.get(regionId) ?? [];
+    if (!extra.length) return base;
+    const seen = new Set(base.map((p) => p.id));
+    return [...base, ...extra.filter((p) => !seen.has(p.id))];
   }
 
   private async load(regionId: string): Promise<Place[]> {
     const region = this.regions.find((r) => r.id === regionId);
     if (!region) throw new Error(`unknown region: ${regionId}`);
-    const lists = await Promise.all(
-      CATEGORIES.map(async (kind) => {
-        const docs = await this.get('/places', { kind, x: String(region.center.lng), y: String(region.center.lat), radius: '1500' });
-        return docs.map((d, i) => toPlace(d, regionId, i, kind));
+    // 한 종류가 실패해도(예: 예전 프록시가 모르는 종류) 나머지로 코스를 짠다
+    const lists = await Promise.allSettled(
+      KINDS.map(async ({ kind, category }) => {
+        const docs = await this.get('/places', {
+          kind,
+          x: String(region.center.lng),
+          y: String(region.center.lat),
+          radius: String(region.radius ?? 1500),
+        });
+        return docs.map((d, i) => toPlace(d, regionId, i, category));
       }),
     );
+    const ok = lists.filter((l): l is PromiseFulfilledResult<Place[]> => l.status === 'fulfilled');
+    if (!ok.length) throw (lists[0] as PromiseRejectedResult).reason;
     const seen = new Set<string>();
-    return lists.flat().filter((p) => !seen.has(p.id) && seen.add(p.id));
+    return curate(ok.flatMap((l) => l.value).filter((p) => !seen.has(p.id) && seen.add(p.id)));
   }
 
   async searchPlaces(query: string, regionId?: string): Promise<Place[]> {
@@ -119,6 +197,35 @@ export class KakaoPlaceProvider implements PlaceProvider {
     const docs = await this.get('/search', params);
     return docs.map((d, i) => toPlace(d, region?.id ?? 'search', i));
   }
+
+  /** 하고 싶은 것(직접 입력)으로 검색한 곳 중 지역 안에 있는 곳을 그 지역 후보에 더한다 */
+  async addWishPlaces(query: string, regionId: string): Promise<Place[]> {
+    const region = this.regions.find((r) => r.id === regionId);
+    if (!region) return [];
+    const max = (region.radius ?? 1500) * 2;
+    const found = (await this.searchPlaces(query, regionId)).filter((p) => meters(p.location, region.center) <= max);
+    this.extras.set(regionId, [...(this.extras.get(regionId) ?? []), ...found]);
+    return found;
+  }
+
+  /** 장소 사진 한 장 (다음 이미지 검색 썸네일). 없거나 실패하면 undefined */
+  photoOf(place: Place): Promise<string | undefined> {
+    if (!place.id.startsWith('kakao-')) return Promise.resolve(undefined);
+    let task = this.photos.get(place.id);
+    if (!task) {
+      task = this.getJson<{ url?: string | null }>('/photo', { q: lookupName(place) })
+        .then((r) => r.url ?? undefined)
+        .catch(() => undefined);
+      this.photos.set(place.id, task);
+    }
+    return task;
+  }
+}
+
+function meters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const dy = (a.lat - b.lat) * 111_000;
+  const dx = (a.lng - b.lng) * 88_000;
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
 /** 실제 데이터가 안 될 때(오프라인, 프록시 미설정·오류) 목업으로 대신한다 */
@@ -155,5 +262,15 @@ export class FallbackPlaceProvider implements PlaceProvider {
   }
   searchPlaces(query: string, regionId?: string) {
     return this.tryBoth((p) => p.searchPlaces(query, regionId), () => false);
+  }
+  async addWishPlaces(query: string, regionId: string): Promise<Place[]> {
+    try {
+      return (await this.primary.addWishPlaces?.(query, regionId)) ?? [];
+    } catch {
+      return [];
+    }
+  }
+  photoOf(place: Place): Promise<string | undefined> {
+    return this.primary.photoOf?.(place) ?? Promise.resolve(undefined);
   }
 }

@@ -1,16 +1,13 @@
 import type { Place, PlaceCategory, Region } from '../../domain/types';
+import { ALL_REGIONS } from '../../domain/regions';
 
 /**
  * 목업 데이터. 장소 이름은 모두 가상의 이름이고, 좌표는 각 동네 중심 근처에
  * 흩어 놓은 값이다. 실제 장소를 못 불러올 때 대신 쓴다.
  */
-export const REGIONS: Region[] = [
-  { id: 'seongsu', name: '성수', tagline: '공장 감성 카페와 팝업', center: { lat: 37.5445, lng: 127.056 } },
-  { id: 'hongdae', name: '홍대·연남', tagline: '연트럴파크 산책과 골목 맛집', center: { lat: 37.56, lng: 126.924 } },
-  { id: 'gangnam', name: '강남', tagline: '세련된 다이닝과 루프탑', center: { lat: 37.498, lng: 127.0276 } },
-  { id: 'jamsil', name: '잠실', tagline: '석촌호수 야경과 테마파크', center: { lat: 37.511, lng: 127.098 } },
-  { id: 'euljiro', name: '을지로·종로', tagline: '힙지로 노포와 고궁 산책', center: { lat: 37.5665, lng: 126.99 } },
-];
+export const REGIONS: Region[] = ['seongsu', 'hongdae', 'gangnam', 'jamsil', 'euljiro'].map(
+  (id) => ALL_REGIONS.find((r) => r.id === id)!,
+);
 
 const h = (hh: number, mm = 0) => hh * 60 + mm;
 

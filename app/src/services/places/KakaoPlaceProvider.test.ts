@@ -47,7 +47,7 @@ describe('KakaoPlaceProvider', () => {
     const provider = new KakaoPlaceProvider('https://proxy.test', undefined, f);
     await provider.listPlaces('seongsu');
     await provider.listPlaces('seongsu');
-    expect((f as unknown as { mock: { calls: unknown[] } }).mock.calls).toHaveLength(7);
+    expect((f as unknown as { mock: { calls: unknown[] } }).mock.calls).toHaveLength(8);
   });
 
   it('builds a full course from real-shaped data', async () => {
@@ -80,5 +80,65 @@ describe('FallbackPlaceProvider', () => {
     expect(places.length).toBeGreaterThan(0);
     expect(places[0].id.startsWith('kakao-')).toBe(false);
     expect(provider.lastError).toContain('502');
+  });
+});
+
+describe('popularity, relevance and photos', () => {
+  const museumDocs: KakaoDoc[] = [
+    { ...doc('m1', '국립중앙박물관', '문화,예술 > 문화시설 > 박물관', 'CT1'), review_count: 52000 },
+    { ...doc('m2', '동네 미술관', '문화,예술 > 문화시설 > 미술관', 'CT1'), review_count: 40 },
+    { ...doc('m3', '호미화방', '문화,예술 > 미술,공예 > 화방', ''), review_count: 900 },
+    { ...doc('m4', 'CGV 성수', '문화,예술 > 영화,영상 > 영화관 > CGV', 'CT1'), review_count: 3000 },
+  ];
+  const proxy = (overrides: Record<string, KakaoDoc[] | 'fail'> = {}) =>
+    vi.fn(async (url: string) => {
+      const u = new URL(url);
+      if (u.pathname.endsWith('/photo')) return new Response(JSON.stringify({ url: `https://img.test/${encodeURIComponent(u.searchParams.get('q')!)}` }));
+      const kind = u.searchParams.get('kind')!;
+      const o = overrides[kind];
+      if (o === 'fail') return new Response('{"error":"bad request"}', { status: 400 });
+      return new Response(JSON.stringify({ documents: o ?? SAMPLE[kind] ?? [] }));
+    }) as unknown as typeof fetch;
+
+  it('ranks by blog reviews and drops off-theme places', async () => {
+    const provider = new KakaoPlaceProvider('https://proxy.test', undefined, proxy({ culture: museumDocs }));
+    const culture = (await provider.listPlaces('seongsu')).filter((p) => p.category === 'culture');
+    expect(culture.map((p) => p.name)).toEqual(['국립중앙박물관', '동네 미술관']);
+    expect(culture[0].reviewCount).toBe(52000);
+    expect(culture[0].rating).toBeGreaterThan(culture[1].rating);
+  });
+
+  it('still works when one kind fails (older proxy)', async () => {
+    const provider = new KakaoPlaceProvider('https://proxy.test', undefined, proxy({ leisure: 'fail' }));
+    expect((await provider.listPlaces('seongsu')).length).toBeGreaterThan(5);
+  });
+
+  it('knows Seoul hot spots and Gyeonggi regions', async () => {
+    const regions = await new KakaoPlaceProvider('https://proxy.test').listRegions();
+    expect(regions.length).toBeGreaterThanOrEqual(30);
+    expect(regions.filter((r) => r.group === '경기').map((r) => r.name)).toContain('수원 행궁동');
+  });
+
+  it('looks up a photo by name and neighbourhood, once per place', async () => {
+    const f = proxy();
+    const provider = new KakaoPlaceProvider('https://proxy.test', undefined, f);
+    const [place] = await provider.listPlaces('seongsu');
+    const a = await provider.photoOf(place);
+    const b = await provider.photoOf(place);
+    expect(a).toBe(b);
+    expect(decodeURIComponent(a!)).toContain(place.name);
+    const photoCalls = (f as unknown as { mock: { calls: string[][] } }).mock.calls.filter(([u]) => u.includes('/photo'));
+    expect(photoCalls).toHaveLength(1);
+  });
+
+  it('fills a museum wish only with real museums', async () => {
+    const provider = new KakaoPlaceProvider('https://proxy.test', undefined, proxy({ culture: museumDocs }));
+    const recommender = new RuleBasedRecommender(provider, new StraightLineRouteProvider());
+    const course = await recommender.recommend({
+      regionId: 'seongsu', slotId: 'afternoon', date: 'x', startMinute: 13 * 60, endMinute: 18 * 60, pins: [], preferences: [],
+      flow: ['culture', 'cafe'], wishes: [{ category: 'culture', match: ['미술관', '박물관'] }],
+    });
+    expect(course.stops[0].place.name).toBe('국립중앙박물관');
+    expect(course.stops.some((s) => /화방|CGV/.test(s.place.name))).toBe(false);
   });
 });

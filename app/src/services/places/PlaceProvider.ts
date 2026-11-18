@@ -11,6 +11,10 @@ export interface PlaceProvider {
   listPlaces(regionId: string): Promise<Place[]>;
   /** 이름·태그 검색 (꼭 갈 곳 추가용). regionId가 없으면 전체 지역 */
   searchPlaces(query: string, regionId?: string): Promise<Place[]>;
+  /** 하고 싶은 것(직접 입력)으로 찾은 곳을 그 지역 후보에 더한다 (실제 데이터만) */
+  addWishPlaces?(query: string, regionId: string): Promise<Place[]>;
+  /** 장소 사진 주소 (실제 데이터만) */
+  photoOf?(place: Place): Promise<string | undefined>;
 }
 
 /**

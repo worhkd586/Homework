@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker from './worker.js';
+import worker, { lookupName, MAX_REVIEW_LOOKUPS } from './worker.js';
 
 const env = { KAKAO_REST_KEY: 'test-key' };
 const ctx = { waitUntil: () => {} };
@@ -41,6 +41,47 @@ describe('proxy', () => {
     expect((await call('/search?q=')).status).toBe(400);
     expect((await call('/anything')).status).toBe(404);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('adds blog review counts and keeps going when that lookup fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url.includes('/search/blog')) {
+        if (url.includes(encodeURIComponent('카페 B').replace(/%20/g, '+'))) return new Response('no', { status: 500 });
+        return new Response(JSON.stringify({ meta: { total_count: 321 } }));
+      }
+      return new Response(JSON.stringify({ documents: [doc('1', '카페 A'), doc('2', '카페 B')] }));
+    }));
+    const body = await (await call('/places?kind=cafe&x=127.056&y=37.5445')).json();
+    expect(body.documents[0].review_count).toBe(321);
+    expect(body.documents[1].review_count).toBeUndefined();
+  });
+
+  it('stays under the free plan limit of 50 outside calls', async () => {
+    let n = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      n++;
+      if (url.includes('/search/blog')) return new Response(JSON.stringify({ meta: { total_count: 1 } }));
+      return new Response(JSON.stringify({ documents: Array.from({ length: 15 }, (_, i) => doc(`${url.length}-${i}`, `곳 ${i}`)) }));
+    }));
+    const body = await (await call('/places?kind=activity&x=127.056&y=37.5445')).json();
+    expect(body.documents.length).toBe(MAX_REVIEW_LOOKUPS);
+    expect(n).toBeLessThan(50);
+  });
+
+  it('returns one https photo for a place', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ documents: [
+      { thumbnail_url: 'http://insecure/1.jpg', doc_url: 'a' },
+      { thumbnail_url: 'https://search1.kakaocdn.net/thumb.jpg', doc_url: 'https://blog/1' },
+    ] })));
+    vi.stubGlobal('fetch', fetchMock);
+    const body = await (await call('/photo?q=' + encodeURIComponent('국립중앙박물관 용산동6가'))).json();
+    expect(body.url).toBe('https://search1.kakaocdn.net/thumb.jpg');
+    expect(fetchMock.mock.calls[0][0]).toContain('/v2/search/image');
+  });
+
+  it('names a place with its neighbourhood for lookups', () => {
+    expect(lookupName({ place_name: '우란문화재단', address_name: '서울 성동구 성수동2가 273-13' })).toBe('우란문화재단 성수동2가');
+    expect(lookupName({ place_name: '화성행궁', address_name: '경기 수원시 팔달구 남창동 6-2' })).toBe('화성행궁 남창동');
   });
 
   it('reports a missing key and Kakao errors clearly', async () => {

@@ -88,7 +88,7 @@ describe('activities (하고 싶은 것)', () => {
 
   it('puts the wanted activity into every option', async () => {
     const { ACTIVITY_EXAMPLES } = await import('../../domain/activities');
-    const museum = ACTIVITY_EXAMPLES.find((a) => a.label === '미술관·전시')!;
+    const museum = ACTIVITY_EXAMPLES.find((a) => a.label === '미술관·박물관')!;
     const options = await recommendOptions(
       recommender,
       { regionId: 'gangnam', slotId: 'afternoon', date: 'x', startMinute: 13 * 60, endMinute: 18 * 60, pins: [] },
@@ -101,7 +101,7 @@ describe('activities (하고 싶은 것)', () => {
 
   it('fits a museum into an evening course next to other wishes', async () => {
     const { ACTIVITY_EXAMPLES, parseActivity } = await import('../../domain/activities');
-    const museum = ACTIVITY_EXAMPLES.find((a) => a.label === '미술관·전시')!;
+    const museum = ACTIVITY_EXAMPLES.find((a) => a.label === '미술관·박물관')!;
     const options = await recommendOptions(
       recommender,
       { regionId: 'gangnam', slotId: 'evening', date: 'x', startMinute: 17 * 60, endMinute: 22 * 60, pins: [] },
