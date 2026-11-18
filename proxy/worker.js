@@ -46,7 +46,12 @@ async function kakao(env, kind, params) {
   const res = await fetch(`${KAKAO}/${kind}.json?${new URLSearchParams(params)}`, {
     headers: { Authorization: `KakaoAK ${env.KAKAO_REST_KEY}` },
   });
-  if (!res.ok) throw new Error(`kakao ${res.status}`);
+  if (!res.ok) {
+    // 카카오가 알려주는 거절 이유(예: 카카오맵 서비스 꺼짐)를 그대로 전달. 키는 포함되지 않음.
+    let why = '';
+    try { why = ((await res.json()).message ?? '').slice(0, 200); } catch {}
+    throw new Error(`kakao ${res.status}${why ? `: ${why}` : ''}`);
+  }
   const data = await res.json();
   return (data.documents ?? []).map((d) => Object.fromEntries(FIELDS.map((f) => [f, d[f] ?? ''])));
 }

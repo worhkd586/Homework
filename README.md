@@ -82,7 +82,9 @@ proxy/                              카카오 키를 숨기는 Cloudflare Worker
    npx wrangler deploy                      # 끝나면 https://date-course-proxy.<내이름>.workers.dev 주소가 나와요
    ```
    확인: 브라우저에서 `https://date-course-proxy.<내이름>.workers.dev/search?q=성수 카페` 를 열면 장소 목록(JSON)이 보여요.
-3. **앱에 주소 넣기**: `app/.env.example`을 `app/.env.local`로 복사하고 `EXPO_PUBLIC_PLACES_PROXY_URL=` 뒤에 2번 주소를 넣은 뒤 `npx expo start`를 다시 실행해요.
+3. **앱에 주소 넣기**: 이미 `app/.env`에 `https://date-course-proxy.jayjaydate.workers.dev`가 들어가 있어요. 주소가 바뀌면 이 파일만 고치고 `npx expo start`를 다시 실행해요.
+
+> 카카오가 `403`을 주면 [카카오 디벨로퍼스](https://developers.kakao.com) → 내 애플리케이션 → **카카오맵** 메뉴에서 사용 설정을 **ON**으로 켜야 해요. 프록시는 다시 배포할 필요 없어요.
 
 알아둘 것
 - 비용: 카카오 로컬 API와 Cloudflare Workers 모두 무료 한도 안에서 써요. 같은 검색은 프록시가 하루 동안 캐시해요.
