@@ -74,8 +74,14 @@ export interface CourseRequest {
   pins: PinnedPlace[];
   /** 취향 태그 (예: '조용한', '뷰맛집') */
   preferences: string[];
-  /** 결과에서 "다른 곳으로 바꾸기"를 누른 장소들 */
+  /** 이미 다른 코스에 쓴 장소 등, 빼고 고를 장소들 */
   excludePlaceIds?: string[];
+  /** 되도록 피할 장소들 (다른 추천 코스에 이미 나온 곳) */
+  avoidPlaceIds?: string[];
+  /** 시간대 기본 흐름 대신 쓸 흐름 (기분별 코스 템플릿) */
+  flow?: PlaceCategory[];
+  /** 코스 이름 (없으면 "지역 시간대 코스") */
+  title?: string;
 }
 
 export interface CourseStop {

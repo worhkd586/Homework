@@ -2,12 +2,23 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Course, PinnedPlace, Place, Region, TimeSlotId } from '../domain/types';
+import { MOODS, type MoodId } from '../domain/moods';
+import { recommendOptions, suggestRegion } from '../services/recommend/courseOptions';
 import { CATEGORY_EMOJI, CATEGORY_LABEL, TIME_SLOTS, formatMinute, getTimeSlot } from '../domain/timeSlots';
 import { placeProvider, recommender } from '../lib/services';
 import { colors } from '../ui/theme';
 
-/** 한 화면에서 끝나는 코스 만들기: 지역 → 시간대 → (선택) 꼭 갈 곳 → 코스 짜줘 */
-export default function SetupScreen({ onCourse }: { onCourse: (course: Course) => void }) {
+export interface CourseOptions {
+  options: Course[];
+  /** 지역을 추천받았을 때 그 이유 */
+  note?: string;
+}
+
+const AUTO = 'auto';
+
+/** 한 화면에서 끝나는 코스 만들기: 기분 → 지역(추천 가능) → 시간대 → (선택) 꼭 갈 곳 → 코스 3개 보기 */
+export default function SetupScreen({ onResult }: { onResult: (result: CourseOptions) => void }) {
+  const [moodId, setMoodId] = useState<MoodId>();
   const [regions, setRegions] = useState<Region[]>([]);
   const [regionId, setRegionId] = useState<string>();
   const [slotId, setSlotId] = useState<TimeSlotId>('evening');
@@ -19,6 +30,7 @@ export default function SetupScreen({ onCourse }: { onCourse: (course: Course) =
   const [error, setError] = useState<string>();
 
   const slot = getTimeSlot(slotId);
+  const ready = !!moodId && !!regionId && !loading;
 
   useEffect(() => {
     placeProvider.listRegions().then(setRegions);
@@ -27,7 +39,7 @@ export default function SetupScreen({ onCourse }: { onCourse: (course: Course) =
   useEffect(() => {
     setMustGo(null);
     setPicking(false);
-    if (regionId) placeProvider.listPlaces(regionId).then(setPlaces);
+    if (regionId && regionId !== AUTO) placeProvider.listPlaces(regionId).then(setPlaces);
   }, [regionId]);
 
   const filtered = useMemo(() => places.filter((p) => !query || p.name.includes(query) || p.description.includes(query)), [places, query]);
@@ -44,21 +56,33 @@ export default function SetupScreen({ onCourse }: { onCourse: (course: Course) =
     if (mustGo?.fixedMinute !== undefined) setMustGo({ place: mustGo.place });
   }
 
-  async function makeCourse() {
-    if (!regionId) return;
+  async function makeCourses() {
+    if (!regionId || !moodId) return;
     setLoading(true);
     setError(undefined);
     try {
-      const course = await recommender.recommend({
-        regionId,
-        slotId,
-        date: new Date().toISOString().slice(0, 10),
-        startMinute: slot.defaultStart,
-        endMinute: slot.defaultEnd,
-        pins: mustGo ? [mustGo] : [],
-        preferences: [],
-      });
-      onCourse(course);
+      let region = regions.find((r) => r.id === regionId);
+      let note: string | undefined;
+      if (regionId === AUTO) {
+        const suggestion = await suggestRegion(placeProvider, moodId);
+        region = suggestion.region;
+        note = `✨ ${region.name} 추천 · ${suggestion.reason}`;
+      }
+      if (!region) return;
+      const options = await recommendOptions(
+        recommender,
+        {
+          regionId: region.id,
+          slotId,
+          date: new Date().toISOString().slice(0, 10),
+          startMinute: slot.defaultStart,
+          endMinute: slot.defaultEnd,
+          pins: mustGo ? [mustGo] : [],
+        },
+        moodId,
+        region.name,
+      );
+      onResult({ options, note });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -72,10 +96,27 @@ export default function SetupScreen({ onCourse }: { onCourse: (course: Course) =
         <Text style={styles.brand}>
           <Text style={{ color: colors.accent }}>오늘</Text>어디가
         </Text>
-        <Text style={styles.muted}>지역과 시간만 고르면 데이트 코스를 짜 드려요.</Text>
+        <Text style={styles.muted}>기분만 고르면 할 것과 갈 곳은 골라 드려요.</Text>
+
+        <Text style={styles.h2}>오늘은 어떤 데이트?</Text>
+        <View style={styles.grid}>
+          {MOODS.map((m) => (
+            <Pressable key={m.id} style={[styles.tile, moodId === m.id && styles.selected]} onPress={() => setMoodId(m.id)}>
+              <Text style={styles.slotEmoji}>{m.emoji}</Text>
+              <Text style={styles.tileTitle}>{m.label}</Text>
+              <Text style={styles.small}>{m.hint}</Text>
+            </Pressable>
+          ))}
+        </View>
 
         <Text style={styles.h2}>어디서 만나요?</Text>
         <View style={styles.grid}>
+          <Pressable style={[styles.tile, regionId === AUTO && styles.selected]} onPress={() => setRegionId(AUTO)}>
+            <Text style={styles.tileTitle}>✨ 추천해 줘</Text>
+            <Text style={styles.small} numberOfLines={1}>
+              기분에 맞는 동네로
+            </Text>
+          </Pressable>
           {regions.map((r) => (
             <Pressable key={r.id} style={[styles.tile, regionId === r.id && styles.selected]} onPress={() => setRegionId(r.id)}>
               <Text style={styles.tileTitle}>{r.name}</Text>
@@ -98,8 +139,8 @@ export default function SetupScreen({ onCourse }: { onCourse: (course: Course) =
         </View>
 
         <Text style={styles.h2}>꼭 갈 곳 있어요? (선택)</Text>
-        {!regionId ? (
-          <Text style={styles.muted}>지역을 먼저 골라 주세요.</Text>
+        {!regionId || regionId === AUTO ? (
+          <Text style={styles.muted}>{regionId === AUTO ? '지역을 직접 고르면 꼭 갈 곳을 넣을 수 있어요.' : '지역을 먼저 골라 주세요.'}</Text>
         ) : mustGo ? (
           <View style={[styles.card, styles.selected]}>
             <View style={styles.between}>
@@ -162,8 +203,12 @@ export default function SetupScreen({ onCourse }: { onCourse: (course: Course) =
       </ScrollView>
 
       <SafeAreaView edges={['bottom']} style={styles.footer}>
-        <Pressable style={[styles.button, (!regionId || loading) && styles.buttonOff]} disabled={!regionId || loading} onPress={makeCourse}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>코스 짜줘</Text>}
+        <Pressable style={[styles.button, !ready && styles.buttonOff]} disabled={!ready} onPress={makeCourses}>
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>{!moodId ? '어떤 데이트인지 골라 주세요' : !regionId ? '지역을 골라 주세요' : '코스 3개 보기'}</Text>
+          )}
         </Pressable>
       </SafeAreaView>
     </SafeAreaView>

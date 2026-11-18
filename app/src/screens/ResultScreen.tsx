@@ -8,12 +8,18 @@ import { colors } from '../ui/theme';
 
 /** 추천 결과: 시간표 + 구간별 이동시간 */
 interface Props {
-  course: Course;
+  options: Course[];
+  note?: string;
+  selected: number;
+  onSelect: (index: number) => void;
   onChange: (course: Course) => void;
   onBack: () => void;
 }
 
-export default function ResultScreen({ course, onChange, onBack }: Props) {
+const optionName = (c: Course) => c.title.split(' · ').slice(1).join(' · ') || c.title;
+
+export default function ResultScreen({ options, note, selected, onSelect, onChange, onBack }: Props) {
+  const course = options[selected];
   const slot = getTimeSlot(course.request.slotId);
   // 일정 추가: addingAt = 끼워 넣을 자리, picking = 직접 고르기 목록 열림
   const [addingAt, setAddingAt] = useState<number | null>(null);
@@ -108,9 +114,33 @@ export default function ResultScreen({ course, onChange, onBack }: Props) {
         <Text style={styles.eyebrow}>
           {slot.emoji} {slot.label} {formatMinute(course.request.startMinute)}–{formatMinute(course.request.endMinute)}
         </Text>
-        <Text style={styles.title}>{course.title}</Text>
+        <Text style={styles.title}>마음에 드는 코스를 골라요</Text>
+        {note && <Text style={styles.note}>{note}</Text>}
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.options} contentContainerStyle={{ gap: 10, paddingHorizontal: 20 }}>
+          {options.map((o, i) => (
+            <Pressable
+              key={o.title}
+              style={[styles.option, i === selected && styles.optionOn]}
+              onPress={() => {
+                onSelect(i);
+                setAddingAt(null);
+              }}
+            >
+              <Text style={styles.optionEmoji}>{o.stops.map((s) => CATEGORY_EMOJI[s.place.category]).join(' ')}</Text>
+              <Text style={styles.name} numberOfLines={2}>
+                {optionName(o)}
+              </Text>
+              <Text style={styles.small} numberOfLines={2}>
+                {o.stops.map((s) => s.place.name).join(' → ')}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
+        <Text style={styles.courseTitle}>{course.title}</Text>
         <Text style={styles.muted}>
-          {course.stops.length}곳 · 총 이동 {course.totalTravelMinutes}분
+          {course.stops.length}곳 · 총 이동 {course.totalTravelMinutes}분 · ＋/✕로 다듬을 수 있어요
         </Text>
 
         {course.warnings.map((w, i) => (
@@ -175,7 +205,13 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 48 },
   back: { color: colors.muted, fontSize: 16, marginBottom: 16 },
   eyebrow: { color: colors.accent, fontWeight: '800', fontSize: 13 },
-  title: { color: colors.text, fontSize: 30, fontWeight: '900', letterSpacing: -1, marginTop: 4 },
+  title: { color: colors.text, fontSize: 26, fontWeight: '900', letterSpacing: -1, marginTop: 4 },
+  note: { color: colors.ok, fontSize: 13, marginTop: 6 },
+  options: { marginTop: 16, marginHorizontal: -20, flexGrow: 0 },
+  option: { width: 200, padding: 14, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent', gap: 4 },
+  optionOn: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  optionEmoji: { fontSize: 18, letterSpacing: 2 },
+  courseTitle: { color: colors.text, fontSize: 20, fontWeight: '800', marginTop: 22 },
   muted: { color: colors.muted, fontSize: 15, marginTop: 4 },
   small: { color: colors.muted, fontSize: 12, marginTop: 2 },
   warning: { marginTop: 14, padding: 12, borderRadius: 10, backgroundColor: colors.warnSoft },

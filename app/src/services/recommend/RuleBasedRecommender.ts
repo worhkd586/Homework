@@ -20,6 +20,8 @@ const TRAVEL_BUFFER = 15;
 const MIN_STAY_RATIO = 0.6;
 /** 시간이 모자랄 때 먼저 빼는 가벼운 일정 */
 const LIGHT: PlaceCategory[] = ['walk', 'shop'];
+/** 대체 카테고리도 없을 때 마지막으로 찾아볼 카테고리 (늦은 시간에도 열려 있는 곳) */
+const LAST_RESORT: PlaceCategory[] = ['walk', 'bar', 'cafe'];
 /** 같은 카테고리 후보가 없을 때 대신 찾아볼 카테고리 */
 const ALTERNATES: Partial<Record<PlaceCategory, PlaceCategory[]>> = {
   culture: ['activity', 'shop'],
@@ -85,7 +87,7 @@ export class RuleBasedRecommender implements CourseRecommender {
       .sort((a, b) => a.fixedMinute! - b.fixedMinute!);
     const freePins = request.pins.filter((p) => p.fixedMinute === undefined);
 
-    const flow = [...slot.flow];
+    const flow = [...(request.flow ?? slot.flow)];
     const consume = (category: PlaceCategory) => {
       const i = flow.indexOf(category);
       if (i >= 0) flow[i] = 'consumed' as PlaceCategory;
@@ -138,6 +140,7 @@ export class RuleBasedRecommender implements CourseRecommender {
     // 3) 빈 자리에 실제 장소를 고른다: 평점·취향은 높게, 앞뒤 이동시간은 짧게.
     const used = new Set<string>(request.pins.map((p) => p.place.id));
     const excluded = new Set(request.excludePlaceIds ?? []);
+    const avoided = new Set(request.avoidPlaceIds ?? []);
     const planned: Planned[] = [];
     let clock = request.startMinute;
     let prevLoc: LatLng = sequence[0]?.kind === 'pin' ? sequence[0].pin.place.location : region.center;
@@ -164,7 +167,7 @@ export class RuleBasedRecommender implements CourseRecommender {
       const nextPin = sequence.slice(i + 1).find((it): it is Extract<Item, { kind: 'pin' }> => it.kind === 'pin');
       const stay = defaultStayMinutes(item.category);
       let best: { place: Place; score: number; travel: number; mode: string } | undefined;
-      for (const category of [item.category, ...(ALTERNATES[item.category] ?? [])]) {
+      for (const category of [item.category, ...(ALTERNATES[item.category] ?? []), ...LAST_RESORT]) {
         if (best) break;
         const pool = candidates.filter((p) => p.category === category && !used.has(p.id) && !excluded.has(p.id));
         for (const place of pool) {
@@ -173,7 +176,7 @@ export class RuleBasedRecommender implements CourseRecommender {
           if (!isOpenDuring(place, arrive, arrive + minStay(stay))) continue;
           const toNext = nextPin ? (await this.routes.estimateTravel(place.location, nextPin.pin.place.location)).minutes : 0;
           const prefHits = place.tags.filter((t) => request.preferences.includes(t)).length;
-          const score = place.rating * 12 + prefHits * 8 - toHere.minutes * 0.8 - toNext * 0.4;
+          const score = place.rating * 12 + prefHits * 8 - toHere.minutes * 0.8 - toNext * 0.4 - (avoided.has(place.id) ? 40 : 0);
           if (!best || score > best.score) best = { place, score, travel: toHere.minutes, mode: toHere.mode };
         }
       }
@@ -219,7 +222,7 @@ export class RuleBasedRecommender implements CourseRecommender {
     warnings.push(...scheduleWarnings);
 
     return {
-      title: `${region.name} ${slot.label} 코스`,
+      title: request.title ?? `${region.name} ${slot.label} 코스`,
       request,
       stops,
       legs,
