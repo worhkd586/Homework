@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { ActivityIndicator, ImageBackground, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import Text from '../ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Course, PinnedPlace, Place, Region, TimeSlotId } from '../domain/types';
@@ -20,6 +20,13 @@ export interface CourseOptions {
 }
 
 const AUTO = 'auto';
+/** 분위기 카드 배경 사진 (Stitch에서 만든 이미지) */
+const MOOD_PHOTOS: Record<MoodId, number> = {
+  talk: require('../../assets/moods/talk.jpg'),
+  new: require('../../assets/moods/new.jpg'),
+  food: require('../../assets/moods/food.jpg'),
+  active: require('../../assets/moods/active.jpg'),
+};
 /** 접힌 상태에서 보이는 지역 수 (✨추천 타일과 함께 2칸 × 4줄) */
 const COLLAPSED_REGIONS = 7;
 const GRID_COLUMNS = 5;
@@ -184,9 +191,8 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.brand}>
-          <Text style={{ color: colors.accent }}>오늘</Text>어디가
-        </Text>
+        <Text style={styles.brand}>오늘어디가 •</Text>
+        <Text style={styles.title}>어떤 데이트를 할까요?</Text>
         <Text style={styles.muted}>기분이나 하고 싶은 걸 고르면, 갈 곳과 순서는 짜 드려요.</Text>
 
         {hasCurrent && (
@@ -220,51 +226,69 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
           </>
         )}
 
-        <Text style={styles.h2}>{saved.length > 0 ? '새 코스 만들기' : '오늘은 어떤 데이트?'}</Text>
-        {saved.length > 0 && <Text style={[styles.muted, { marginTop: -6, marginBottom: 10 }]}>오늘은 어떤 데이트?</Text>}
-        <View style={styles.grid}>
-          {MOODS.map((m) => (
-            <Pressable key={m.id} style={[styles.tile, moodId === m.id && styles.selected]} onPress={() => setMoodId(m.id)}>
-              <Text style={styles.slotEmoji}>{m.emoji}</Text>
-              <Text style={styles.tileTitle}>{m.label}</Text>
-              <Text style={styles.small}>{m.hint}</Text>
-            </Pressable>
-          ))}
+        <View style={styles.sectionHead}>
+          <Text style={[styles.h2, styles.h2InRow]}>{saved.length > 0 ? '새 코스 · 분위기' : '분위기'}</Text>
+          <Text style={styles.small}>하나 고르거나 직접 추가</Text>
         </View>
-
-        <Text style={styles.h2}>하고 싶은 거 있어요? (여러 개 OK)</Text>
-        <View style={styles.chips}>
-          {ACTIVITY_EXAMPLES.map((a) => {
-            const on = activities.some((x) => x.label === a.label);
+        <View style={styles.grid}>
+          {MOODS.map((m) => {
+            const on = moodId === m.id;
             return (
-              <Pressable key={a.label} style={[styles.chip, on && styles.chipOn]} onPress={() => toggleActivity(a)}>
-                <Text style={[styles.text, on && styles.chipOnText]}>
-                  {a.emoji} {a.label}
-                </Text>
+              <Pressable
+                key={m.id}
+                style={[styles.moodCard, on && styles.moodCardOn]}
+                onPress={() => setMoodId(on ? undefined : m.id)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={`${m.label} (${m.hint})`}
+              >
+                <ImageBackground source={MOOD_PHOTOS[m.id]} style={styles.moodImage} imageStyle={styles.moodImageInner} resizeMode="cover">
+                  <View style={styles.moodShade} />
+                  <Text style={styles.moodLabel} numberOfLines={1}>
+                    {m.label}
+                  </Text>
+                  {on && (
+                    <View style={styles.check}>
+                      <Text style={styles.checkText}>✓</Text>
+                    </View>
+                  )}
+                </ImageBackground>
               </Pressable>
             );
           })}
-          {activities
-            .filter((a) => !ACTIVITY_EXAMPLES.some((x) => x.label === a.label))
-            .map((a) => (
-              <Pressable key={a.label} style={[styles.chip, styles.chipOn]} onPress={() => toggleActivity(a)}>
-                <Text style={[styles.text, styles.chipOnText]}>✍️ {a.label} ✕</Text>
-              </Pressable>
-            ))}
         </View>
         <View style={styles.wishRow}>
           <TextInput
             style={[styles.input, { flex: 1, minWidth: 0, marginBottom: 0, minHeight: 44 }]}
-            placeholder="직접 입력 (예: 도자기, 볼링, 한강)"
+            placeholder="직접 추가 (예: 도자기, 볼링, 한강)"
             placeholderTextColor={colors.muted}
             value={wish}
             onChangeText={setWish}
             onSubmitEditing={addWish}
             returnKeyType="done"
           />
-          <Pressable style={[styles.wishButton, !wish.trim() && styles.buttonOff]} onPress={addWish} disabled={!wish.trim()}>
+          <Pressable style={[styles.wishButton, !wish.trim() && styles.wishButtonOff]} onPress={addWish} disabled={!wish.trim()}>
             <Text style={styles.buttonTextSmall}>추가</Text>
           </Pressable>
+        </View>
+        <View style={[styles.chips, { marginTop: 12 }]}>
+          {activities
+            .filter((a) => !ACTIVITY_EXAMPLES.some((x) => x.label === a.label))
+            .map((a) => (
+              <Pressable key={a.label} style={[styles.chip, styles.chipOn]} onPress={() => toggleActivity(a)} accessibilityLabel={`${a.label} 빼기`}>
+                <Text style={[styles.text, styles.chipOnText]}>✍️ {a.label} ✕</Text>
+              </Pressable>
+            ))}
+          {ACTIVITY_EXAMPLES.map((a) => {
+            const on = activities.some((x) => x.label === a.label);
+            return (
+              <Pressable key={a.label} style={[styles.chip, on && styles.chipOn]} onPress={() => toggleActivity(a)}>
+                <Text style={[styles.chipText, on && styles.chipOnText]}>
+                  {a.emoji} {a.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
         {wishHint && <Text style={styles.small}>{wishHint}</Text>}
 
@@ -294,34 +318,34 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
         </View>
         {(hiddenCount > 0 || allRegions) && (
           <Pressable style={styles.more} onPress={() => setAllRegions(!allRegions)}>
-            <Text style={styles.moreText}>{allRegions ? '접기 ▴' : `동네 ${hiddenCount}곳 더 보기 ▾`}</Text>
+            <Text style={styles.moreLink}>{allRegions ? '접기 ▴' : `${group} 더 보기 (${hiddenCount}곳)`}</Text>
           </Pressable>
         )}
 
-        <Text style={styles.h2}>언제 만나요?</Text>
+        <View style={styles.sectionHead}>
+          <Text style={[styles.h2, styles.h2InRow]}>언제 만나요?</Text>
+          {!pickingEnd && (
+            <Pressable style={styles.linkButton} onPress={() => setShowGrid(!showGrid)} hitSlop={6}>
+              <Text style={styles.link}>{showGrid ? '접기' : '직접 고르기'}</Text>
+            </Pressable>
+          )}
+        </View>
         <View style={styles.row}>
           {TIME_SLOTS.map((s) => (
             <Pressable key={s.id} style={[styles.slot, !pickingEnd && isSlotRange(s, range.start, range.end) && styles.selected]} onPress={() => pickSlot(s.id)}>
               <Text style={styles.slotEmoji}>{s.emoji}</Text>
-              <Text style={styles.tileTitle}>{s.label}</Text>
+              <Text style={[styles.tileTitle, !pickingEnd && isSlotRange(s, range.start, range.end) && { color: colors.accent }]}>{s.label}</Text>
               <Text style={styles.small}>
                 {clock(s.defaultStart)}~{clock(s.defaultEnd)}
               </Text>
             </Pressable>
           ))}
         </View>
-        <View style={[styles.between, { marginTop: 14 }]}>
-          <Text style={styles.rangeText} accessibilityLabel="고른 시간">
-            {pickingEnd
-              ? `${formatMinute(range.start)} ~ 끝 시간을 눌러 주세요`
-              : `${clock(range.start)} ~ ${clock(range.end)} · ${formatDuration(range.end - range.start)}`}
-          </Text>
-          {!pickingEnd && (
-            <Pressable style={styles.gridToggle} onPress={() => setShowGrid(!showGrid)} hitSlop={6}>
-              <Text style={styles.moreText}>{showGrid ? '접기 ▴' : '직접 고르기 ▾'}</Text>
-            </Pressable>
-          )}
-        </View>
+        <Text style={[styles.rangeText, { marginTop: 12 }]} accessibilityLabel="고른 시간">
+          {pickingEnd
+            ? `${formatMinute(range.start)} ~ 끝 시간을 눌러 주세요`
+            : `${clock(range.start)} ~ ${clock(range.end)} · ${formatDuration(range.end - range.start)}`}
+        </Text>
         {(showGrid || pickingEnd) && (
           <>
             <Text style={styles.small}>시작 → 끝 순서로 눌러요 (30분 단위)</Text>
@@ -375,7 +399,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
                 {timeOptions.map((m) => (
                   <Pressable key={m} style={[styles.chip, mustGo.fixedMinute === m && styles.chipOn]} onPress={() => setMustGo({ ...mustGo, fixedMinute: m })}>
-                    <Text style={[styles.text, mustGo.fixedMinute === m && { color: colors.bg, fontWeight: '700' }]}>{formatMinute(m)}</Text>
+                    <Text style={[styles.text, mustGo.fixedMinute === m && styles.chipOnText]}>{formatMinute(m)}</Text>
                   </Pressable>
                 ))}
               </ScrollView>
@@ -418,7 +442,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.buttonText}>{!moodId && activities.length === 0 ? '어떤 데이트인지 골라 주세요' : !regionId ? '지역을 골라 주세요' : pickingEnd ? '끝 시간을 골라 주세요' : '코스 3개 보기'}</Text>
+            <Text style={styles.buttonText}>{!moodId && activities.length === 0 ? '어떤 데이트인지 골라 주세요' : !regionId ? '지역을 골라 주세요' : pickingEnd ? '끝 시간을 골라 주세요' : '✨ 코스 3개 추천받기'}</Text>
           )}
         </Pressable>
       </SafeAreaView>
@@ -429,13 +453,28 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, paddingBottom: 40 },
-  brand: { fontSize: 30, fontWeight: '900', color: colors.text, letterSpacing: -1 },
+  brand: { fontSize: 15, fontWeight: '700', color: colors.accent },
+  title: { fontSize: 28, fontWeight: '900', color: colors.text, letterSpacing: -1, marginTop: 6 },
+  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 28, marginBottom: 12 },
+  h2InRow: { marginTop: 0, marginBottom: 0 },
+  moodCard: { width: '48%', flexGrow: 1, height: 72, borderRadius: 12, overflow: 'hidden', borderWidth: 2, borderColor: colors.line },
+  moodCardOn: { borderColor: colors.accent },
+  moodImage: { flex: 1, justifyContent: 'center', paddingHorizontal: 14 },
+  moodImageInner: { borderRadius: 10 },
+  moodShade: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 11, 15, 0.55)' },
+  moodLabel: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  check: { position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11, backgroundColor: colors.accentStrong, alignItems: 'center', justifyContent: 'center' },
+  checkText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  chipText: { color: colors.text, fontSize: 14 },
+  moreLink: { color: colors.muted, fontSize: 14, fontWeight: '700' },
+  linkButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
+  link: { color: colors.muted, fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' },
   h2: { fontSize: 19, fontWeight: '700', color: colors.text, marginTop: 28, marginBottom: 12 },
   text: { color: colors.text, fontSize: 15 },
   muted: { color: colors.muted, fontSize: 15, marginTop: 4 },
   small: { color: colors.muted, fontSize: 13, marginTop: 2 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  tile: { width: '48%', flexGrow: 1, padding: 14, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent' },
+  tile: { width: '48%', flexGrow: 1, padding: 14, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent' },
   tileTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   selected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   row: { flexDirection: 'row', gap: 8 },
@@ -447,9 +486,8 @@ const styles = StyleSheet.create({
   timeCellIn: { backgroundColor: colors.accentSoft },
   timeCellEdge: { backgroundColor: colors.accent },
   timeCellText: { color: colors.text, fontSize: 14 },
-  more: { minHeight: 44, justifyContent: 'center', alignItems: 'center', marginTop: 8, borderRadius: 12, borderWidth: 1, borderColor: colors.line },
+  more: { minHeight: 44, justifyContent: 'center', alignItems: 'center', marginTop: 4 },
   moreText: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  gridToggle: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: colors.line },
   groupTab: { paddingHorizontal: 20, minHeight: 44, justifyContent: 'center', borderRadius: 999, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
   groupTabOn: { backgroundColor: colors.text, borderColor: colors.text },
   groupTabText: { color: colors.text, fontSize: 14, fontWeight: '700' },
@@ -458,18 +496,19 @@ const styles = StyleSheet.create({
   card: { padding: 14, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent' },
   between: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   chip: { paddingHorizontal: 14, minHeight: 44, justifyContent: 'center', borderRadius: 999, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, marginRight: 8 },
-  chipOn: { backgroundColor: colors.text, borderColor: colors.text },
-  input: { backgroundColor: colors.card, color: colors.text, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginBottom: 8 },
+  chipOn: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+  input: { backgroundColor: colors.card, color: colors.text, borderRadius: 12, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginBottom: 8 },
   placeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   resume: { marginTop: 16, borderColor: colors.line },
   savedRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 12, backgroundColor: colors.card, marginBottom: 8 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chipOnText: { color: colors.bg, fontWeight: '700' },
+  chipOnText: { color: colors.text, fontWeight: '700' },
   wishRow: { flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'center' },
-  wishButton: { backgroundColor: colors.accentStrong, borderRadius: 10, paddingHorizontal: 16, minHeight: 44, justifyContent: 'center' },
+  wishButton: { backgroundColor: colors.line, borderRadius: 12, paddingHorizontal: 18, minHeight: 44, justifyContent: 'center' },
+  wishButtonOff: { opacity: 0.5 },
   buttonTextSmall: { color: '#fff', fontSize: 15, fontWeight: '800' },
   footer: { paddingHorizontal: 20, paddingTop: 10, backgroundColor: colors.bg },
-  button: { backgroundColor: colors.accentStrong, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginBottom: 8 },
+  button: { backgroundColor: colors.accentStrong, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 8 },
   buttonOff: { backgroundColor: '#3a3a44' },
   buttonText: { color: '#fff', fontSize: 17, fontWeight: '800' },
 });
