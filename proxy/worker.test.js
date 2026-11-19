@@ -149,9 +149,9 @@ describe('og:image fallback', () => {
     expect(ogImage('<meta property="og:image" content="http://localhost/a.jpg">')).toBeNull();
     expect(ogImage('<p>no meta</p>')).toBeNull();
   });
-  it('작은 네이버 사진은 가로 800으로 키운다', () => {
-    expect(upsize('https://mblogthumb-phinf.pstatic.net/a/IMG.jpg?type=w2')).toBe('https://mblogthumb-phinf.pstatic.net/a/IMG.jpg?type=w800');
-    expect(upsize('https://postfiles.pstatic.net/a/IMG.jpg?type=w966')).toBe('https://postfiles.pstatic.net/a/IMG.jpg?type=w966');
+  it('네이버 블로그 사진은 postfiles 서버에서 가로 966으로 받는다', () => {
+    expect(upsize('https://blogthumb.pstatic.net/a/IMG.jpg?type=w2')).toBe('https://postfiles.pstatic.net/a/IMG.jpg?type=w966');
+    expect(upsize('https://mblogthumb-phinf.pstatic.net/a/IMG.jpg?type=w800')).toBe('https://postfiles.pstatic.net/a/IMG.jpg?type=w966');
     expect(upsize('https://example.com/a.jpg')).toBe('https://example.com/a.jpg');
   });
 });

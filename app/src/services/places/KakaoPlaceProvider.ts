@@ -246,7 +246,7 @@ export class KakaoPlaceProvider implements PlaceProvider {
   private cachedPhoto(key: string, params: Record<string, string>): Promise<PhotoResult | undefined> {
     let task = this.photos.get(key);
     if (!task) {
-      task = this.getJson<{ url?: string | null; large?: string | null }>('/photo', params)
+      task = this.getJson<{ url?: string | null; large?: string | null }>('/photo', { ...params, v: PHOTO_VERSION })
         .then((r) => (r.url ? { url: r.url, large: r.large ?? undefined } : undefined))
         .catch(() => undefined);
       this.photos.set(key, task);
@@ -254,6 +254,9 @@ export class KakaoPlaceProvider implements PlaceProvider {
     return task;
   }
 }
+
+/** Worker의 사진 찾는 방식이 바뀌면 올린다 (중간 캐시에 남은 예전 답을 쓰지 않게) */
+const PHOTO_VERSION = '3';
 
 interface PhotoResult {
   url: string;

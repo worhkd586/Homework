@@ -99,13 +99,15 @@ export function ogImage(html) {
   return safeImageUrl(content.replace(/&amp;/g, '&'));
 }
 
-/** 네이버 사진 서버는 type=w숫자로 크기를 고른다. 작으면 가로 800으로 */
+/**
+ * 네이버 블로그 사진은 og:image(blogthumb 등)로는 작게 오거나 크기 지정이 안 먹는다.
+ * 같은 경로를 postfiles 서버에서 가로 966으로 받으면 원본에 가까운 크기로 온다
+ */
 export function upsize(url) {
-  if (!/\.pstatic\.net\//.test(url)) return url;
-  const w = Number(url.match(/[?&]type=w(\d+)/)?.[1] ?? 0);
-  if (w >= 400) return url;
   const u = new URL(url);
-  u.searchParams.set('type', 'w800');
+  if (!/^(blogthumb|postfiles|mblogthumb-phinf)\.pstatic\.net$/.test(u.hostname)) return url;
+  u.hostname = 'postfiles.pstatic.net';
+  u.search = '?type=w966';
   return u.toString();
 }
 
