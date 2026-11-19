@@ -447,19 +447,16 @@ export function popularityPoints(place: Place): number {
   return 70 + Math.log10(reviews + 1) * 20 + (place.recentCount ?? 0) * 0.8;
 }
 
-/** 요즘 뜨는 곳: 최신 글 50개 중 40개 이상이 최근 3개월 */
-export const isTrending = (place: Place) => (place.recentCount ?? 0) >= 40;
-
 const shortCount = (n: number) =>
   (n >= 10000 ? `${(n / 10000).toFixed(n >= 100000 ? 0 : 1)}만` : n >= 1000 ? `${(n / 1000).toFixed(1)}천` : String(n)).replace('.0', '');
 
-/** 화면에 보일 인기 표시: '후기 1.2만 · 🔥 요즘 인기' (후기 수를 모르면 별점) */
+/**
+ * 화면에 보일 인기 표시: '후기 1.2만' (후기 수를 모르면 별점).
+ * 최근 글 수는 인기 있는 곳 대부분이 최대치(50)라 표시하지 않고 점수에만 쓴다 (요즘 글이 뜸한 곳이 밀린다).
+ */
 export function popularityLabel(place: Place): string {
   if (place.reviewCount === undefined) return place.pick ? '데이트 명소' : `★${place.rating.toFixed(1)}`;
-  const parts = [`후기 ${shortCount(place.reviewCount)}`];
-  if (isTrending(place)) parts.push('🔥 요즘 인기');
-  else if ((place.recentCount ?? 0) >= 15) parts.push(`최근 3개월 글 ${place.recentCount}+`);
-  return parts.join(' · ');
+  return `후기 ${shortCount(place.reviewCount)}`;
 }
 
 function matchesKeyword(place: Place, keywords: string[] | undefined): boolean {

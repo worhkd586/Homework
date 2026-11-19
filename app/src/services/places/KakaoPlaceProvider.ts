@@ -23,7 +23,7 @@ export interface KakaoDoc {
 }
 
 /** 프록시 응답 모양이 바뀔 때마다 올린다 (캐시 무효화) */
-const PROXY_VERSION = '3';
+const PROXY_VERSION = '4';
 
 /** 프록시의 검색 묶음 → 앱의 장소 종류 */
 const KINDS: Array<{ kind: string; category: PlaceCategory }> = [
