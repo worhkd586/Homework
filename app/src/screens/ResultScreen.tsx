@@ -3,11 +3,11 @@ import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, TextInpu
 import Text from '../ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Course, Place } from '../domain/types';
-import { CATEGORY_LABEL, formatDuration, formatMinute, getTimeSlot, isSlotRange } from '../domain/timeSlots';
+import { CATEGORY_EMOJI, CATEGORY_LABEL, formatDuration, formatMinute, getTimeSlot, isSlotRange } from '../domain/timeSlots';
 import { dataSourceNote, placeProvider, recommender } from '../lib/services';
 import { colors, radius } from '../ui/theme';
-import PlacePhoto from '../ui/PlacePhoto';
 import Segmented from '../ui/Segmented';
+import Photo from '../ui/Photo';
 import type { DateLog, Verdict } from '../lib/savedCourses';
 import PlaceSuggestionList from '../ui/PlaceSuggestionList';
 import { popularityLabel } from '../services/recommend/RuleBasedRecommender';
@@ -207,32 +207,30 @@ export default function ResultScreen({ options, note, selected, isSaved, log, on
             return (
               <Fragment key={s.place.id}>
                 <View style={styles.stop} onLayout={(e) => (stopY.current[i] = e.nativeEvent.layout.y)}>
-                  <View style={styles.time}>
+                  <View style={styles.stopHead}>
+                    <View style={styles.dot} />
                     <Text style={styles.timeMain}>{formatMinute(s.arriveMinute)}</Text>
+                    <Text style={styles.catLabel}>
+                      {CATEGORY_LABEL[s.place.category]} · ~{formatMinute(s.leaveMinute)}
+                    </Text>
+                    <Pressable
+                      style={styles.remove}
+                      hitSlop={8}
+                      onPress={() => run(() => recommender.removeStop(course, i))}
+                      accessibilityLabel={`${s.place.name} 빼기`}
+                    >
+                      <Text style={styles.removeText}>✕</Text>
+                    </Pressable>
                   </View>
                   <Pressable style={[styles.card, editing && styles.cardOn]} onPress={() => open({ kind: 'edit', index: i })} accessibilityLabel={`${s.place.name} 수정`}>
-                    <View style={styles.cardHead}>
-                      <PlacePhoto place={s.place} size={56} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.name} numberOfLines={2}>
-                          {s.place.name}
-                        </Text>
-                        <Text style={styles.small} numberOfLines={1}>
-                          {CATEGORY_LABEL[s.place.category]} · ~{formatMinute(s.leaveMinute)}까지
-                        </Text>
-                        <Text style={styles.small} numberOfLines={1}>
-                          {s.place.description}
-                        </Text>
-                      </View>
-                      <Pressable
-                        style={styles.remove}
-                        hitSlop={8}
-                        onPress={() => run(() => recommender.removeStop(course, i))}
-                        accessibilityLabel={`${s.place.name} 빼기`}
-                      >
-                        <Text style={styles.removeText}>✕</Text>
-                      </Pressable>
-                    </View>
+                    <Photo style={styles.stopPhoto} loadKey={s.place.id} load={() => placeProvider.photoOf?.(s.place) ?? Promise.resolve(undefined)} emoji={CATEGORY_EMOJI[s.place.category]} label={`${s.place.name} 사진`} />
+                    <View style={styles.cardBody}>
+                      <Text style={styles.name} numberOfLines={2}>
+                        {s.place.name}
+                      </Text>
+                      <Text style={styles.desc} numberOfLines={2}>
+                        {s.place.description}
+                      </Text>
                     {s.pinned && <Text style={styles.badge}>{s.fixedTime ? '🔒 시간 고정' : s.reason === '직접 추가한 곳' ? '📍 직접 추가' : '📌 꼭 갈 곳'}</Text>}
                     {!s.pinned && s.fixedTime && <Text style={styles.badge}>🔒 시간 고정</Text>}
                     {log && (
@@ -261,6 +259,7 @@ export default function ResultScreen({ options, note, selected, isSaved, log, on
                     )}
                     {editing && <Text style={styles.reason}>{s.reason}</Text>}
                     {stopPanel(i)}
+                    </View>
                   </Pressable>
                 </View>
                 {leg ? (
@@ -326,51 +325,55 @@ export default function ResultScreen({ options, note, selected, isSaved, log, on
 }
 
 const styles = StyleSheet.create({
+  desc: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 6 },
+  cardBody: { padding: 16 },
+  stopPhoto: { width: '100%', aspectRatio: 16 / 9 },
+  catLabel: { flex: 1, color: colors.muted, fontSize: 13, fontWeight: '600' },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accentStrong },
+  stopHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   legText: { flexShrink: 1, color: colors.muted, fontSize: 13 },
-  meta: { flex: 1, color: colors.muted, fontSize: 15, fontWeight: '600' },
+  meta: { flex: 1, color: colors.muted, fontSize: 14, fontWeight: '600' },
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 48 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: -12, marginBottom: 12 },
   backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   backIcon: { color: colors.text, fontSize: 30, lineHeight: 34 },
-  remove: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start' },
+  remove: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   removeText: { color: colors.muted, fontSize: 15 },
-  legRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginLeft: 58, minHeight: 44, gap: 8 },
-  addRound: { minHeight: 44, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', marginLeft: 'auto' },
-  addRoundText: { color: colors.accent, fontSize: 13, fontWeight: '700' },
+  legRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginLeft: 3, paddingLeft: 14, borderLeftWidth: 1, borderLeftColor: colors.line, minHeight: 52, marginVertical: 6, gap: 8 },
+  addRound: { minHeight: 36, paddingHorizontal: 12, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center', marginLeft: 'auto' },
+  addRoundText: { color: colors.text, fontSize: 13, fontWeight: '700' },
   footerRow: { flexDirection: 'row', gap: 10 },
   rateRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
   rate: { flex: 1, minHeight: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
   rateGood: { backgroundColor: colors.mint },
   rateBad: { backgroundColor: colors.pink },
   rateText: { color: colors.muted, fontSize: 14, fontWeight: '700' },
-  logCard: { marginTop: 20, padding: 16, borderRadius: radius.card, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
+  logCard: { marginTop: 24, padding: 16, borderRadius: radius.card, backgroundColor: colors.surface },
   logTitle: { color: colors.text, fontSize: 17, fontWeight: '800' },
   memo: { marginTop: 10, minHeight: 64, borderRadius: 14, backgroundColor: colors.surface, color: colors.text, padding: 12, fontSize: 15, textAlignVertical: 'top' },
-  secondary: { paddingHorizontal: 20, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  secondary: { paddingHorizontal: 20, borderRadius: 12, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   secondaryText: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  title: { color: colors.text, fontSize: 24, fontWeight: '800', letterSpacing: -0.5, marginTop: 20 },
+  title: { color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: -0.8, marginTop: 22 },
   note: { color: colors.ok, fontSize: 13, marginTop: 6 },
   text: { color: colors.text, fontSize: 15 },
   muted: { color: colors.muted, fontSize: 15, marginTop: 4 },
   small: { color: colors.muted, fontSize: 13, marginTop: 2 },
   warning: { marginTop: 14, padding: 12, borderRadius: 10, backgroundColor: colors.warnSoft },
   warningText: { color: colors.warn, fontSize: 13 },
-  stop: { flexDirection: 'row', gap: 10 },
-  time: { width: 48, alignItems: 'flex-start', paddingTop: 16 },
-  timeMain: { color: colors.text, fontSize: 15, fontWeight: '800' },
-  card: { flex: 1, padding: 12, borderRadius: radius.card, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
+  stop: { marginTop: 8 },
+  timeMain: { color: colors.accentStrong, fontSize: 17, fontWeight: '800' },
+  card: { borderRadius: radius.card, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
   cardOn: { borderColor: colors.accent, borderWidth: 1.5 },
-  cardHead: { flexDirection: 'row', gap: 12, alignItems: 'center' },
-  name: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  badge: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, overflow: 'hidden', backgroundColor: colors.accentSoft, color: colors.accent, fontSize: 12, fontWeight: '700' },
+  name: { color: colors.text, fontSize: 19, fontWeight: '800', letterSpacing: -0.3 },
+  badge: { alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, overflow: 'hidden', backgroundColor: colors.pink, color: colors.onPink, fontSize: 12, fontWeight: '700' },
   reason: { color: colors.muted, fontSize: 13, marginTop: 8 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   action: { flexGrow: 1, flexBasis: '45%', minHeight: 44, justifyContent: 'center', borderRadius: 10, alignItems: 'center', backgroundColor: colors.surface },
   actionText: { color: colors.text, fontSize: 14, fontWeight: '700' },
   chip: { paddingHorizontal: 14, minHeight: 44, justifyContent: 'center', borderRadius: 999, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, marginRight: 8 },
   chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
-  panel: { marginLeft: 58, marginVertical: 8, padding: 12, borderRadius: radius.tile, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card },
+  panel: { marginVertical: 8, padding: 12, borderRadius: radius.card, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card },
   choices: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   choice: { flex: 1, minHeight: 44, justifyContent: 'center', borderRadius: 10, alignItems: 'center', backgroundColor: colors.surface },
   choicePrimary: { backgroundColor: colors.accentStrong },
@@ -379,7 +382,7 @@ const styles = StyleSheet.create({
   input: { backgroundColor: colors.surface, color: colors.text, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginBottom: 6 },
   placeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   footer: { paddingHorizontal: 20, paddingTop: 10, backgroundColor: colors.bg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
-  button: { backgroundColor: colors.accentStrong, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 8 },
+  button: { backgroundColor: colors.accentStrong, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginBottom: 8 },
   buttonText: { color: colors.onAccent, fontSize: 17, fontWeight: '800' },
   savedNote: { color: colors.ok, fontSize: 14, textAlign: 'center', paddingVertical: 14 },
 });

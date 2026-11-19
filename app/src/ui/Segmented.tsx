@@ -48,11 +48,11 @@ export default function Segmented<T extends string>({
 }
 
 const styles = StyleSheet.create({
-  wrap: { flexDirection: 'row', padding: 4, gap: 4, borderRadius: 14, backgroundColor: colors.surface },
-  item: { flex: 1, minHeight: 44, paddingVertical: 6, paddingHorizontal: 4, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  itemOn: { backgroundColor: colors.card, shadowColor: '#1c1639', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  wrap: { flexDirection: 'row', padding: 3, gap: 3, borderRadius: 12, backgroundColor: colors.surface },
+  item: { flex: 1, minHeight: 44, paddingVertical: 6, paddingHorizontal: 4, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  itemOn: { backgroundColor: colors.accent },
   label: { color: colors.muted, fontSize: 15, fontWeight: '600' },
-  labelOn: { color: colors.accent, fontWeight: '800' },
+  labelOn: { color: colors.onAccent, fontWeight: '800' },
   sub: { color: colors.muted, fontSize: 12, marginTop: 1 },
-  subOn: { color: colors.text },
+  subOn: { color: colors.onAccent, opacity: 0.85 },
 });

@@ -1,34 +1,37 @@
-/** 라벤더 구름 (Stitch 시안 B)를 정돈한 버전: 거의 흰 배경, 얇은 테두리의 흰 카드, 라일락 포인트 하나 */
+/**
+ * 에디토리얼 포토 (Stitch 시안 2): 흰 바탕, 검은 글씨, 큰 사진 카드.
+ * 선택은 검정(accent), 주요 버튼만 딥 코랄(accentStrong).
+ */
 export const colors = {
-  bg: '#f7f6fb',
+  bg: '#ffffff',
   card: '#ffffff',
-  /** 카드 안의 옅은 칸 (버튼, 입력칸, 사진 자리) */
-  surface: '#eeebf7',
-  line: '#e7e3f2',
-  text: '#1c1639',
-  muted: '#6b6680',
-  /** 라일락: 글씨·테두리·채운 버튼 모두 (흰 글씨 대비 6.9:1) */
-  accent: '#5949c0',
-  accentStrong: '#5949c0',
-  accentSoft: '#efebff',
+  /** 옅은 회색 면 (입력칸, 세그먼트 배경, 사진 자리) */
+  surface: '#f4f4f5',
+  line: '#ececee',
+  text: '#111111',
+  muted: '#6e6e73',
+  /** 선택 상태 (칩·탭·테두리) */
+  accent: '#111111',
+  /** 채운 주요 버튼, 강조 글씨 (흰 글씨 대비 5.3:1) */
+  accentStrong: '#c8332a',
+  accentSoft: '#f4f4f5',
   onAccent: '#ffffff',
-  disabled: '#c9c2e6',
-  mint: '#d5f7ee',
+  disabled: '#c9c9cd',
+  mint: '#e3f5ef',
   onMint: '#00594c',
-  pink: '#ffe3ef',
-  onPink: '#844965',
+  pink: '#fdeeec',
+  onPink: '#a62a22',
   warn: '#8a5a00',
   warnSoft: '#fff4dc',
-  ok: '#00705e',
+  ok: '#007a63',
 };
 
-export const radius = { card: 16, tile: 14, pill: 999 };
+export const radius = { card: 12, tile: 12, pill: 999 };
 
-/** 구름처럼 떠 있는 부드러운 그림자 */
 export const softShadow = {
-  shadowColor: '#5949c0',
-  shadowOpacity: 0.08,
-  shadowRadius: 16,
-  shadowOffset: { width: 0, height: 6 },
-  elevation: 2,
+  shadowColor: '#000000',
+  shadowOpacity: 0.06,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 4 },
+  elevation: 1,
 };

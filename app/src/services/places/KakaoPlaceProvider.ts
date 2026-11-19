@@ -221,10 +221,22 @@ export class KakaoPlaceProvider implements PlaceProvider {
     if (!place.id.startsWith('kakao-')) return Promise.resolve(undefined);
     let task = this.photos.get(place.id);
     if (!task) {
-      task = this.getJson<{ url?: string | null }>('/photo', { q: lookupName(place) })
+      task = this.getJson<{ url?: string | null }>('/photo', { q: lookupName(place), name: place.name })
         .then((r) => r.url ?? undefined)
         .catch(() => undefined);
       this.photos.set(place.id, task);
+    }
+    return task;
+  }
+
+  photoFor(query: string, name?: string): Promise<string | undefined> {
+    const key = `q:${query}`;
+    let task = this.photos.get(key);
+    if (!task) {
+      task = this.getJson<{ url?: string | null }>('/photo', name ? { q: query, name } : { q: query })
+        .then((r) => r.url ?? undefined)
+        .catch(() => undefined);
+      this.photos.set(key, task);
     }
     return task;
   }
@@ -280,5 +292,8 @@ export class FallbackPlaceProvider implements PlaceProvider {
   }
   photoOf(place: Place): Promise<string | undefined> {
     return this.primary.photoOf?.(place) ?? Promise.resolve(undefined);
+  }
+  photoFor(query: string, name?: string): Promise<string | undefined> {
+    return this.primary.photoFor?.(query, name) ?? Promise.resolve(undefined);
   }
 }

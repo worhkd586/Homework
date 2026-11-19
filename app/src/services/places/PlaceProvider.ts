@@ -15,6 +15,8 @@ export interface PlaceProvider {
   addWishPlaces?(query: string, regionId: string): Promise<Place[]>;
   /** 장소 사진 주소 (실제 데이터만) */
   photoOf?(place: Place): Promise<string | undefined>;
+  /** 검색어로 찾은 대표 사진 주소 (동네 카드용, 실제 데이터만). name이 제목에 든 글의 사진만 쓴다 */
+  photoFor?(query: string, name?: string): Promise<string | undefined>;
 }
 
 /**

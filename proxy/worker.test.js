@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { lookupName, MAX_REVIEW_LOOKUPS } from './worker.js';
+import worker, { coreName, lookupName, MAX_REVIEW_LOOKUPS, squash } from './worker.js';
 
 const env = { KAKAO_REST_KEY: 'test-key' };
 const ctx = { waitUntil: () => {} };
@@ -68,15 +68,30 @@ describe('proxy', () => {
     expect(n).toBeLessThan(50);
   });
 
-  it('returns one https photo for a place', async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ documents: [
-      { thumbnail_url: 'http://insecure/1.jpg', doc_url: 'a' },
-      { thumbnail_url: 'https://search1.kakaocdn.net/thumb.jpg', doc_url: 'https://blog/1' },
-    ] })));
+  it('uses a photo only from a post whose title names the place', async () => {
+    const fetchMock = vi.fn(async (u) => new Response(JSON.stringify({ documents: String(u).includes('/blog') ? [
+      { title: '성수 카페 추천 <b>BEST</b> 5', thumbnail: 'https://search1.kakaocdn.net/wrong.jpg', url: 'https://blog/0' },
+      { title: '<b>아키야마</b> 성수 이자카야 후기', thumbnail: 'https://search1.kakaocdn.net/right.jpg', url: 'https://blog/1' },
+    ] : [] })));
     vi.stubGlobal('fetch', fetchMock);
-    const body = await (await call('/photo?q=' + encodeURIComponent('국립중앙박물관 용산동6가'))).json();
-    expect(body.url).toBe('https://search1.kakaocdn.net/thumb.jpg');
-    expect(fetchMock.mock.calls[0][0]).toContain('/v2/search/image');
+    const body = await (await call('/photo?q=' + encodeURIComponent('아키야마 성수본점 성수동2가') + '&name=' + encodeURIComponent('아키야마 성수본점'))).json();
+    expect(body.url).toBe('https://search1.kakaocdn.net/right.jpg');
+    expect(fetchMock.mock.calls[0][0]).toContain('/v2/search/blog');
+  });
+
+  it('gives no photo when no post title matches the place', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ documents: [
+      { title: '서울 데이트 코스 총정리', thumbnail: 'https://search1.kakaocdn.net/wrong.jpg', url: 'https://blog/0' },
+    ] }))));
+    const body = await (await call('/photo?q=' + encodeURIComponent('37.5시그니처 성수점 성수동2가') + '&name=' + encodeURIComponent('37.5시그니처 성수점'))).json();
+    expect(body.url).toBeNull();
+  });
+
+  it('compares names without spaces, tags or branch suffixes', () => {
+    expect(squash('<b>소문난 성수</b> 감자탕')).toBe('소문난성수감자탕');
+    expect(coreName('아키야마 성수본점')).toBe('아키야마');
+    expect(coreName('37.5시그니처 성수점')).toBe('37.5시그니처');
+    expect(coreName('국립중앙박물관')).toBe('국립중앙박물관');
   });
 
   it('names a place with its neighbourhood for lookups', () => {

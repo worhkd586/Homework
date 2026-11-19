@@ -50,6 +50,34 @@ function coord(url) {
   return { x: x.toFixed(5), y: y.toFixed(5) };
 }
 
+/** 비교용: 공백·기호·괄호를 빼고 소문자로 */
+export function squash(text) {
+  return String(text ?? '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&[a-z#0-9]+;/gi, '')
+    .replace(/[\s·.,!?'"()\[\]{}\-_/|~]/g, '')
+    .toLowerCase();
+}
+
+/** 장소 이름에서 지점명을 뗀 핵심 이름 ("아키야마 성수본점" → "아키야마") */
+export function coreName(name) {
+  const words = String(name).trim().split(/\s+/);
+  const core = words.filter((w, i) => i === 0 || !/(본점|점|지점|호점|센터|매장)$/.test(w)).join(' ');
+  return core || name;
+}
+
+/** 제목에 장소 이름이 들어간 블로그/카페 글의 대표 사진 */
+export async function findPhoto(env, query, name) {
+  const want = squash(coreName(name));
+  if (want.length < 2) return null;
+  for (const kind of ['blog', 'cafe']) {
+    const data = await kakaoGet(env, `${DAUM}/${kind}?${new URLSearchParams({ query, size: '10', sort: 'accuracy' })}`);
+    const hit = (data.documents ?? []).find((d) => /^https:\/\//.test(d.thumbnail ?? '') && squash(d.title).includes(want));
+    if (hit) return hit;
+  }
+  return null;
+}
+
 async function kakaoGet(env, url) {
   const res = await fetch(url, { headers: { Authorization: `KakaoAK ${env.KAKAO_REST_KEY}` } });
   if (!res.ok) {
@@ -132,9 +160,11 @@ async function handle(url, env) {
   if (url.pathname === '/photo') {
     const q = (url.searchParams.get('q') ?? '').trim();
     if (!q || q.length > 60) return json({ error: 'bad request' }, 400);
-    const data = await kakaoGet(env, `${DAUM}/image?${new URLSearchParams({ query: q, size: '3', sort: 'accuracy' })}`);
-    const doc = (data.documents ?? []).find((d) => /^https:\/\//.test(d.thumbnail_url ?? ''));
-    return json({ url: doc?.thumbnail_url ?? null, source: doc?.doc_url ?? null }, 200, { 'Cache-Control': `public, max-age=${DAY * 7}` });
+    // 이미지 검색은 제목이 없어서 엉뚱한 사진이 자주 붙는다. 블로그·카페 글 중 제목에 장소 이름이 들어간
+    // 글의 대표 사진만 쓰고, 그런 글이 없으면 사진을 주지 않는다 (앱은 종류별 기본 그림을 보여 준다)
+    const name = (url.searchParams.get('name') ?? q.split(' ').slice(0, -1).join(' ') ?? q).trim() || q;
+    const doc = await findPhoto(env, q, name);
+    return json({ url: doc?.thumbnail ?? null, source: doc?.url ?? null }, 200, { 'Cache-Control': `public, max-age=${DAY * 7}` });
   }
   return json({ error: 'not found' }, 404);
 }

@@ -12,6 +12,7 @@ import { placeProvider, recommender } from '../lib/services';
 import { colors, radius } from '../ui/theme';
 import PlacePhoto from '../ui/PlacePhoto';
 import Segmented from '../ui/Segmented';
+import Photo from '../ui/Photo';
 import { popularityLabel } from '../services/recommend/RuleBasedRecommender';
 
 export interface CourseOptions {
@@ -202,7 +203,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.brand}>오늘어디가</Text>
+        <Text style={styles.brand}>● 오늘어디가 · COURSE CURATION</Text>
         <Text style={styles.title}>어떤 데이트를 할까요?</Text>
         <Text style={styles.subtitle}>하고 싶은 거·지역·시간만 고르면 코스를 짜 드려요.</Text>
 
@@ -283,18 +284,35 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
         <Segmented options={(['서울', '경기', '제주'] as const).map((g) => ({ id: g, label: g }))} value={group} onChange={setGroup} role="tab" />
         <View style={{ height: 12 }} />
         <View style={styles.grid}>
-          <Pressable style={[styles.tile, regionId === AUTO && styles.selected]} onPress={() => setRegionId(AUTO)}>
-            <Text style={[styles.tileTitle, { color: colors.accent }]}>✨ 추천해 줘</Text>
-            <Text style={styles.small} numberOfLines={1}>
-              고른 것에 맞는 동네로
-            </Text>
+          <Pressable
+            style={[styles.regionCard, styles.autoCard, regionId === AUTO && styles.regionOn]}
+            onPress={() => setRegionId(AUTO)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: regionId === AUTO }}
+          >
+            <Text style={styles.autoBadge}>AUTO</Text>
+            <View>
+              <Text style={styles.regionName}>✨ 추천해 줘</Text>
+              <Text style={styles.regionTag} numberOfLines={1}>
+                고른 것에 맞는 동네로
+              </Text>
+            </View>
           </Pressable>
           {shownRegions.map((r) => (
-            <Pressable key={r.id} style={[styles.tile, regionId === r.id && styles.selected]} onPress={() => setRegionId(r.id)}>
-              <Text style={styles.tileTitle}>{r.name}</Text>
-              <Text style={styles.small} numberOfLines={1}>
-                {r.tagline}
-              </Text>
+            <Pressable
+              key={r.id}
+              style={[styles.regionCard, regionId === r.id && styles.regionOn]}
+              onPress={() => setRegionId(r.id)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: regionId === r.id }}
+              accessibilityLabel={`${r.name}, ${r.tagline}`}
+            >
+              <Photo style={styles.regionPhoto} loadKey={r.id} load={() => placeProvider.photoFor?.(`${r.name.split('·')[0]} 데이트`, r.name.split('·')[0]) ?? Promise.resolve(undefined)}>
+                <Text style={styles.regionName}>{r.name}</Text>
+                <Text style={styles.regionTag} numberOfLines={1}>
+                  {r.tagline}
+                </Text>
+              </Photo>
             </Pressable>
           ))}
         </View>
@@ -476,12 +494,19 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
 }
 
 const styles = StyleSheet.create({
+  regionTag: { color: 'rgba(255,255,255,0.88)', fontSize: 12, marginTop: 2 },
+  regionName: { color: '#ffffff', fontSize: 17, fontWeight: '800' },
+  autoBadge: { alignSelf: 'flex-start', color: colors.onAccent, backgroundColor: colors.accentStrong, fontSize: 11, fontWeight: '800', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, overflow: 'hidden', letterSpacing: 0.5 },
+  autoCard: { backgroundColor: colors.text, padding: 12, justifyContent: 'space-between' },
+  regionPhoto: { flex: 1 },
+  regionOn: { borderColor: colors.accentStrong },
+  regionCard: { width: '48%', flexGrow: 1, aspectRatio: 4 / 3, borderRadius: radius.card, overflow: 'hidden', borderWidth: 2, borderColor: 'transparent' },
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40 },
-  brand: { fontSize: 14, fontWeight: '800', color: colors.accent },
-  title: { fontSize: 26, fontWeight: '800', color: colors.text, letterSpacing: -0.5, marginTop: 6 },
+  brand: { fontSize: 12, fontWeight: '800', color: colors.accentStrong, letterSpacing: 1 },
+  title: { fontSize: 28, fontWeight: '800', color: colors.text, letterSpacing: -0.8, marginTop: 8 },
   subtitle: { color: colors.muted, fontSize: 15, marginTop: 6 },
-  h2: { fontSize: 17, fontWeight: '800', color: colors.text, marginTop: 32, marginBottom: 12 },
+  h2: { fontSize: 19, fontWeight: '800', color: colors.text, letterSpacing: -0.3, marginTop: 36, marginBottom: 14 },
   optional: { fontSize: 13, fontWeight: '600', color: colors.muted },
   text: { color: colors.text, fontSize: 15 },
   muted: { color: colors.muted, fontSize: 15, marginTop: 4 },
@@ -489,37 +514,37 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tile: { width: '48%', flexGrow: 1, paddingVertical: 14, paddingHorizontal: 14, borderRadius: radius.tile, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
   tileTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  selected: { borderColor: colors.accent, borderWidth: 1.5, backgroundColor: colors.accentSoft },
+  selected: { borderColor: colors.accent, borderWidth: 1.5, backgroundColor: colors.surface },
   row: { flexDirection: 'row', gap: 8 },
   rangeText: { color: colors.text, fontSize: 15, fontWeight: '700' },
   timeGrid: { gap: 6, marginTop: 10 },
   timeRow: { flexDirection: 'row', gap: 6 },
   timeCell: { flex: 1, minHeight: 44, justifyContent: 'center', borderRadius: 10, alignItems: 'center', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
   timeCellEmpty: { flex: 1 },
-  timeCellIn: { backgroundColor: colors.accentSoft, borderColor: colors.accentSoft },
+  timeCellIn: { backgroundColor: colors.surface, borderColor: colors.surface },
   timeCellEdge: { backgroundColor: colors.accent, borderColor: colors.accent },
   timeCellText: { color: colors.text, fontSize: 14 },
   more: { minHeight: 44, justifyContent: 'center', alignItems: 'center', marginTop: 4 },
-  moreLink: { color: colors.accent, fontSize: 14, fontWeight: '700' },
+  moreLink: { color: colors.muted, fontSize: 14, fontWeight: '700' },
   linkButton: { minHeight: 44, justifyContent: 'center' },
-  link: { color: colors.accent, fontSize: 14, fontWeight: '700' },
+  link: { color: colors.text, fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' },
   card: { padding: 16, borderRadius: radius.card, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
   between: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
-  chip: { paddingHorizontal: 14, minHeight: 36, justifyContent: 'center', borderRadius: radius.pill, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
+  chip: { paddingHorizontal: 14, minHeight: 36, justifyContent: 'center', borderRadius: radius.pill, backgroundColor: colors.card, borderWidth: 1, borderColor: '#dcdce0' },
   chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
   chipText: { color: colors.text, fontSize: 14, fontWeight: '500' },
   chipOnText: { color: colors.onAccent, fontWeight: '700' },
-  input: { backgroundColor: colors.card, color: colors.text, borderRadius: 12, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 14, minHeight: 44, paddingVertical: 10, fontSize: 15, marginBottom: 8 },
+  input: { backgroundColor: colors.surface, color: colors.text, borderRadius: 10, paddingHorizontal: 14, minHeight: 44, paddingVertical: 10, fontSize: 15, marginBottom: 8 },
   placeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   resume: { marginTop: 16 },
   savedRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: radius.tile, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, marginBottom: 8 },
   wishRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  wishButton: { backgroundColor: colors.accent, borderRadius: 12, paddingHorizontal: 18, minHeight: 44, justifyContent: 'center' },
+  wishButton: { backgroundColor: colors.text, borderRadius: 10, paddingHorizontal: 18, minHeight: 44, justifyContent: 'center' },
   wishButtonOff: { backgroundColor: colors.disabled },
   buttonTextSmall: { color: colors.onAccent, fontSize: 15, fontWeight: '700' },
   footer: { paddingHorizontal: 20, paddingTop: 10, backgroundColor: colors.bg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
-  button: { backgroundColor: colors.accentStrong, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 8 },
+  button: { backgroundColor: colors.text, borderRadius: 12, paddingVertical: 17, alignItems: 'center', marginBottom: 8 },
   buttonOff: { backgroundColor: colors.disabled },
   buttonText: { color: colors.onAccent, fontSize: 17, fontWeight: '800' },
 });
