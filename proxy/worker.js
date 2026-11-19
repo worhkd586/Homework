@@ -3,7 +3,8 @@
  *
  * - 카카오 REST API 키는 앱이 아니라 여기(Worker의 비밀값 KAKAO_REST_KEY)에만 둔다.
  * - 앱은 정해진 모양의 요청만 보낼 수 있다:
- *   /places (종류별 주변 장소 + 블로그 후기 수), /search (이름 검색), /photo (장소 사진 한 장),
+ *   /places (종류별 주변 장소 + 블로그 후기 수 · 최근 3개월 글 수), /search (이름 검색), /pick (명소 하나 + 후기 수),
+ *   /photo (장소 사진 한 장),
  *   /img (/photo가 고른 원본 사진을 대신 받아 줌)
  * - 같은 요청은 캐시해서 카카오 무료 쿼터를 아낀다 (장소 하루, 사진 일주일).
  * - 무료 플랜은 요청 하나당 바깥 호출이 50번까지라서, 후기 수는 한 번에 최대 MAX_REVIEW_LOOKUPS곳만 센다.
@@ -179,14 +180,26 @@ export function lookupName(doc) {
   return `${doc.place_name} ${dong}`.trim();
 }
 
-/** 다음 블로그 검색 결과 수 = 후기 수 (실패하면 모름) */
-async function reviewCount(env, doc) {
+/** 최근 이 기간 안에 쓴 블로그 글을 '요즘 인기'로 센다 */
+export const RECENT_DAYS = 90;
+
+/**
+ * 블로그 후기 수와 최근 글 수 (실패하면 null).
+ * 최신순으로 50개를 받아서, 전체 글 수(total_count)와 그 50개 중 최근 RECENT_DAYS일 안의 글 수를 함께 센다.
+ * 바깥 호출은 예전(후기 수만)과 똑같이 한 곳에 한 번이다.
+ */
+export async function blogStats(env, doc, now = Date.now()) {
   try {
-    const data = await kakaoGet(env, `${DAUM}/blog?${new URLSearchParams({ query: lookupName(doc), size: '1' })}`);
-    return data.meta?.total_count ?? null;
+    const data = await kakaoGet(env, `${DAUM}/blog?${new URLSearchParams({ query: lookupName(doc), size: '50', sort: 'recency' })}`);
+    return { total: data.meta?.total_count ?? 0, recent: countRecent(data.documents ?? [], now) };
   } catch {
     return null;
   }
+}
+
+export function countRecent(docs, now = Date.now()) {
+  const since = now - RECENT_DAYS * DAY * 1000;
+  return docs.filter((d) => Date.parse(d.datetime ?? '') >= since).length;
 }
 
 /** 검색어마다 고르게 앞에서부터 섞는다 (후기 수를 셀 곳을 한쪽에 몰지 않으려고) */
@@ -220,9 +233,9 @@ async function handle(url, env) {
       }),
     );
     const documents = interleave(lists).slice(0, MAX_REVIEW_LOOKUPS);
-    const counts = await Promise.all(documents.map((d) => reviewCount(env, d)));
+    const stats = await Promise.all(documents.map((d) => blogStats(env, d)));
     documents.forEach((d, i) => {
-      if (counts[i] !== null) d.review_count = counts[i];
+      if (stats[i]) Object.assign(d, { review_count: stats[i].total, recent_count: stats[i].recent });
     });
     return json({ kind, documents }, 200, { 'Cache-Control': `public, max-age=${DAY}` });
   }
@@ -234,6 +247,20 @@ async function handle(url, env) {
     if (c) Object.assign(params, { x: c.x, y: c.y, sort: 'accuracy' });
     const documents = await local(env, 'keyword', params);
     return json({ documents }, 200, { 'Cache-Control': `public, max-age=${DAY}` });
+  }
+  if (url.pathname === '/pick') {
+    // 골라 둔 명소 하나: 이름으로 찾아서 가장 비슷한 곳 하나 + 후기 수 · 최근 글 수
+    const q = (url.searchParams.get('q') ?? '').trim();
+    const c = coord(url);
+    if (!q || q.length > 40 || !c) return json({ error: 'bad request' }, 400);
+    const docs = await local(env, 'keyword', { query: q, x: c.x, y: c.y, sort: 'accuracy', size: '5' });
+    const want = squash(q);
+    const doc = docs.find((d) => squash(d.place_name).includes(want) || want.includes(squash(d.place_name)));
+    if (doc) {
+      const stats = await blogStats(env, doc);
+      if (stats) Object.assign(doc, { review_count: stats.total, recent_count: stats.recent });
+    }
+    return json({ documents: doc ? [doc] : [] }, 200, { 'Cache-Control': `public, max-age=${DAY}` });
   }
   if (url.pathname === '/photo') {
     const q = (url.searchParams.get('q') ?? '').trim();

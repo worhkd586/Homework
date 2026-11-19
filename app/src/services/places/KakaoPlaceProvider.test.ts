@@ -8,7 +8,7 @@ import { RuleBasedRecommender } from '../recommend/RuleBasedRecommender';
 const doc = (id: string, name: string, category_name: string, group: string, dx = 0): KakaoDoc => ({
   id, place_name: name, category_name, category_group_code: group,
   address_name: '서울 성동구 성수동', road_address_name: '서울 성동구 연무장길 1',
-  x: String(127.056 + dx), y: '37.5445', place_url: `http://place.map.kakao.com/${id}`, phone: '',
+  x: String(127.056 + dx), y: '37.5445', place_url: `http://place.map.kakao.com/${id}`, phone: '', review_count: 1000,
 });
 
 /** 프록시 응답 흉내: 종류마다 2곳씩 */
@@ -105,11 +105,22 @@ describe('popularity, relevance and photos', () => {
     }) as unknown as typeof fetch;
 
   it('ranks by blog reviews and drops off-theme places', async () => {
-    const provider = new KakaoPlaceProvider('https://proxy.test', undefined, proxy({ culture: museumDocs }));
+    const docs = [...museumDocs, { ...doc('m5', '성수 미술관', '문화,예술 > 문화시설 > 미술관', 'CT1'), review_count: 800 }];
+    const provider = new KakaoPlaceProvider('https://proxy.test', undefined, proxy({ culture: docs }));
     const culture = (await provider.listPlaces('seongsu')).filter((p) => p.category === 'culture');
-    expect(culture.map((p) => p.name)).toEqual(['국립중앙박물관', '동네 미술관']);
+    expect(culture.map((p) => p.name)).toEqual(['국립중앙박물관', '성수 미술관']);
     expect(culture[0].reviewCount).toBe(52000);
     expect(culture[0].rating).toBeGreaterThan(culture[1].rating);
+  });
+
+  it('drops places with few blog reviews or unknown counts, but keeps picked spots', async () => {
+    const few = { ...doc('r9', '후기 적은 집', '음식점 > 양식', 'FD6'), review_count: 5 };
+    const unknown = { ...doc('r8', '모르는 집', '음식점 > 양식', 'FD6'), review_count: undefined };
+    const provider = new KakaoPlaceProvider('https://proxy.test', undefined, proxy({ restaurant: [few, unknown, ...SAMPLE.restaurant] }));
+    const names = (await provider.listPlaces('seongsu')).map((p) => p.name);
+    expect(names).not.toContain('후기 적은 집');
+    expect(names).not.toContain('모르는 집');
+    expect(names).toContain('성수 파스타');
   });
 
   it('still works when one kind fails (older proxy)', async () => {

@@ -228,6 +228,9 @@ export default function ResultScreen({ options, note, selected, isSaved, log, on
                       <Text style={styles.name} numberOfLines={2}>
                         {s.place.name}
                       </Text>
+                      <Text style={styles.pop} numberOfLines={1}>
+                        {popularityLabel(s.place)}
+                      </Text>
                       <Text style={styles.desc} numberOfLines={2}>
                         {s.place.description}
                       </Text>
@@ -368,6 +371,7 @@ const styles = StyleSheet.create({
   name: { color: colors.text, fontSize: 19, fontWeight: '800', letterSpacing: -0.3 },
   badge: { alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, overflow: 'hidden', backgroundColor: colors.pink, color: colors.onPink, fontSize: 12, fontWeight: '700' },
   reason: { color: colors.muted, fontSize: 13, marginTop: 8 },
+  pop: { color: colors.text, fontSize: 14, fontWeight: '800', marginTop: 4 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   action: { flexGrow: 1, flexBasis: '45%', minHeight: 44, justifyContent: 'center', borderRadius: 10, alignItems: 'center', backgroundColor: colors.surface },
   actionText: { color: colors.text, fontSize: 14, fontWeight: '700' },

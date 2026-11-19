@@ -333,7 +333,7 @@ export class RuleBasedRecommender implements CourseRecommender {
         fit.score -
         (toHere?.minutes ?? 0) * 0.8 -
         toNext * 0.8;
-      const why = [popularityLabel(candidate)];
+      const why: string[] = [];
       if (toHere) why.push(`${TRAVEL_WORD[toHere.mode]} ${toHere.minutes}분`);
       if (liked.has(candidate.id)) why.push('💜 전에 좋았던 곳');
       if (isFlagship(candidate)) why.push('대표 명소');
@@ -435,22 +435,31 @@ export function matchesTheme(place: Place, words: string[]): boolean {
   return words.some((w) => text.includes(w.toLowerCase()));
 }
 
-/** 화면에 보일 인기 표시: 후기 수를 알면 후기 수, 모르면 점수 */
 /**
- * 추천 점수에서 인기(후기 수) 몫. 후기가 10배 많을 때마다 20점 (도보 약 13분 거리만큼).
- * 실제 데이터: 후기 10개 ≈ 91점, 1천 개 ≈ 130점, 1만 개 ≈ 150점. 후기 수가 없는 예시 데이터는 별점 × 20
+ * 추천 점수에서 인기 몫.
+ * - 후기(블로그 글)가 10배 많을 때마다 20점: 후기 300개 ≈ 120점, 3천 개 ≈ 140점, 3만 개 ≈ 160점
+ * - 요즘 인기: 최신 글 50개 중 최근 3개월 글 하나당 0.8점 (최대 40점). 오래된 유명 가게보다 지금 사람들이 가는 곳
+ * 후기 수가 없는 예시 데이터는 별점 × 20
  */
 export function popularityPoints(place: Place): number {
   const reviews = trustedReviews(place);
   if (reviews === undefined) return place.rating * 20;
-  return 70 + Math.log10(reviews + 1) * 20;
+  return 70 + Math.log10(reviews + 1) * 20 + (place.recentCount ?? 0) * 0.8;
 }
 
+/** 요즘 뜨는 곳: 최신 글 50개 중 40개 이상이 최근 3개월 */
+export const isTrending = (place: Place) => (place.recentCount ?? 0) >= 40;
+
+const shortCount = (n: number) =>
+  (n >= 10000 ? `${(n / 10000).toFixed(n >= 100000 ? 0 : 1)}만` : n >= 1000 ? `${(n / 1000).toFixed(1)}천` : String(n)).replace('.0', '');
+
+/** 화면에 보일 인기 표시: '후기 1.2만 · 🔥 요즘 인기' (후기 수를 모르면 별점) */
 export function popularityLabel(place: Place): string {
-  if (place.reviewCount === undefined) return `★${place.rating.toFixed(1)}`;
-  const n = place.reviewCount;
-  const short = n >= 10000 ? `${(n / 10000).toFixed(n >= 100000 ? 0 : 1)}만` : n >= 1000 ? `${(n / 1000).toFixed(1)}천` : String(n);
-  return `후기 ${short.replace('.0', '')}`;
+  if (place.reviewCount === undefined) return place.pick ? '데이트 명소' : `★${place.rating.toFixed(1)}`;
+  const parts = [`후기 ${shortCount(place.reviewCount)}`];
+  if (isTrending(place)) parts.push('🔥 요즘 인기');
+  else if ((place.recentCount ?? 0) >= 15) parts.push(`최근 3개월 글 ${place.recentCount}+`);
+  return parts.join(' · ');
 }
 
 function matchesKeyword(place: Place, keywords: string[] | undefined): boolean {

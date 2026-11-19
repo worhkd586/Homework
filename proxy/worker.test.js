@@ -155,3 +155,34 @@ describe('og:image fallback', () => {
     expect(upsize('https://example.com/a.jpg')).toBe('https://example.com/a.jpg');
   });
 });
+
+describe('recent popularity', () => {
+  it('counts blog posts from the last 90 days along with the total', async () => {
+    const now = Date.now();
+    const day = 86400000;
+    const posts = [5, 30, 80, 120, 400].map((d) => ({ datetime: new Date(now - d * day).toISOString() }));
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url.includes('/search/blog')) {
+        expect(url).toContain('sort=recency');
+        return new Response(JSON.stringify({ meta: { total_count: 2500 }, documents: posts }));
+      }
+      return new Response(JSON.stringify({ documents: [doc('1', '카페 A')] }));
+    }));
+    const body = await (await call('/places?kind=cafe&x=127.056&y=37.5445')).json();
+    expect(body.documents[0].review_count).toBe(2500);
+    expect(body.documents[0].recent_count).toBe(3);
+  });
+
+  it('/pick returns the matching place with counts, or nothing', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url.includes('/search/blog')) return new Response(JSON.stringify({ meta: { total_count: 9000 }, documents: [] }));
+      return new Response(JSON.stringify({ documents: [doc('9', '다른 가게'), doc('1', '어니언 성수')] }));
+    }));
+    const body = await (await call('/pick?q=어니언 성수&x=127.056&y=37.5445')).json();
+    expect(body.documents).toHaveLength(1);
+    expect(body.documents[0].id).toBe('1');
+    expect(body.documents[0].review_count).toBe(9000);
+    const none = await (await call('/pick?q=없는곳&x=127.056&y=37.5445')).json();
+    expect(none.documents).toHaveLength(0);
+  });
+});

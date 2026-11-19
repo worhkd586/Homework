@@ -38,6 +38,8 @@ export interface Place {
   rating: number;
   /** 블로그 후기 수 (실제 데이터일 때) */
   reviewCount?: number;
+  /** 최근 3개월 블로그 글 수 (최신 글 50개 중). 많을수록 '요즘' 인기 */
+  recentCount?: number;
   /** 영업 시작/종료, 분 단위 (0 = 00:00). close가 open보다 작으면 자정을 넘김 */
   openMinute: number;
   closeMinute: number;

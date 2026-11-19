@@ -18,10 +18,12 @@ export interface KakaoDoc {
   phone: string;
   /** 다음 블로그 검색 결과 수 (프록시가 셀 수 있었을 때만) */
   review_count?: number;
+  /** 최근 3개월 블로그 글 수 (최신 50개 중, 새 프록시만) */
+  recent_count?: number;
 }
 
 /** 프록시 응답 모양이 바뀔 때마다 올린다 (캐시 무효화) */
-const PROXY_VERSION = '2';
+const PROXY_VERSION = '3';
 
 /** 프록시의 검색 묶음 → 앱의 장소 종류 */
 const KINDS: Array<{ kind: string; category: PlaceCategory }> = [
@@ -62,8 +64,19 @@ const EXCLUDE: Partial<Record<PlaceCategory, RegExp>> = {
 /** 어느 종류든 데이트 코스로는 안 맞는 곳 (주차장, 아이용 시설 등) */
 const EXCLUDE_ALL = /주차장|화장실|매표소|어린이|키즈|유아|근린공원|소공원|놀이터|수영장|눈썰매|물놀이|체육센터|체육관|문화센터|주민센터|복지관|청년|상담|마음센터|센터 \d|놀숲|벌툰|캣툰|만화/;
 
-/** 후기가 이보다 적으면 (같은 종류에 다른 후보가 충분할 때) 뺀다 */
-const MIN_REVIEWS = 10;
+/**
+ * 후기(블로그 글)가 이보다 적은 곳은 후보에서 아예 뺀다. 골라 둔 명소만 예외.
+ * 밥집·카페·술집은 흔해서 기준을 높게, 전시·산책·놀거리는 드물어서 조금 낮게.
+ */
+export const MIN_REVIEWS: Record<PlaceCategory, number> = {
+  restaurant: 300,
+  cafe: 300,
+  bar: 200,
+  shop: 150,
+  activity: 150,
+  culture: 100,
+  walk: 100,
+};
 
 /** 카카오 분류 → 앱의 장소 종류 */
 export function categoryOf(doc: KakaoDoc, hint?: PlaceCategory): PlaceCategory {
@@ -101,6 +114,7 @@ export function toPlace(doc: KakaoDoc, regionId: string, rank: number, hint?: Pl
     location: { lat: Number(doc.y), lng: Number(doc.x) },
     rating: reviews !== undefined ? popularityScore(reviews) : Math.max(3.8, 4.6 - rank * 0.05),
     reviewCount: reviews,
+    recentCount: typeof doc.recent_count === 'number' ? doc.recent_count : undefined,
     openMinute: open,
     closeMinute: close,
     stayMinutes: defaultStayMinutes(category),
@@ -118,12 +132,8 @@ export function curate(places: Place[]): Place[] {
     if (p.category === 'shop' && /소품|잡화|선물|편집|팝업|문구/.test(text)) return true; // 생활용품점으로 분류된 소품샵은 살린다
     return !EXCLUDE[p.category]?.test(text);
   });
-  const out: Place[] = [];
-  for (const category of new Set(relevant.map((p) => p.category))) {
-    const group = relevant.filter((p) => p.category === category);
-    const popular = group.filter((p) => p.reviewCount === undefined || p.reviewCount >= MIN_REVIEWS);
-    out.push(...(popular.length >= 5 ? popular : group));
-  }
+  // 후기 수를 모르는 곳(프록시가 다 못 센 곳)도 뺀다: 인기를 확인할 수 없으니까
+  const out = relevant.filter((p) => p.pick || (p.reviewCount ?? 0) >= MIN_REVIEWS[p.category]);
   return out.sort((a, b) => b.rating - a.rating);
 }
 
@@ -204,15 +214,23 @@ export class KakaoPlaceProvider implements PlaceProvider {
   /** 동네별 데이트 명소를 이름으로 찾는다 (못 찾거나 실패하면 빼고) */
   private async findPicks(region: Region): Promise<Place[]> {
     const max = (region.radius ?? 1500) * 2.5;
+    const near = (d: KakaoDoc) => meters({ lat: Number(d.y), lng: Number(d.x) }, region.center) <= max;
+    const at = { x: String(region.center.lng), y: String(region.center.lat) };
     const found = await Promise.allSettled(
       (region.picks ?? []).map(async (name) => {
-        const docs = await this.get('/search', { q: name, x: String(region.center.lng), y: String(region.center.lat) });
-        const want = squash(name);
-        const doc = docs.find((d) => {
-          const got = squash(d.place_name);
-          return (got.includes(want) || want.includes(got)) && meters({ lat: Number(d.y), lng: Number(d.x) }, region.center) <= max;
-        });
-        return doc ? { ...toPlace(doc, region.id, 0), pick: true } : undefined;
+        let doc: KakaoDoc | undefined;
+        try {
+          // 새 프록시: 찾은 곳 + 후기 수 · 최근 글 수
+          doc = (await this.get('/pick', { q: name, ...at }))[0];
+        } catch {
+          // 예전 프록시(/pick 없음): 이름 검색으로만
+          const want = squash(name);
+          doc = (await this.get('/search', { q: name, ...at })).find((d) => {
+            const got = squash(d.place_name);
+            return got.includes(want) || want.includes(got);
+          });
+        }
+        return doc && near(doc) ? { ...toPlace(doc, region.id, 0), pick: true } : undefined;
       }),
     );
     return found.flatMap((r) => (r.status === 'fulfilled' && r.value ? [r.value] : []));

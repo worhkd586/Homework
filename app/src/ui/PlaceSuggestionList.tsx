@@ -150,6 +150,9 @@ export default function PlaceSuggestionList({ course, index, mode, onPick, onClo
                   {i < 3 ? `${i + 1}. ` : ''}
                   {s.place.name}
                 </Text>
+                <Text style={styles.pop} numberOfLines={1}>
+                  {popularityLabel(s.place)}
+                </Text>
                 <Text style={styles.small} numberOfLines={1}>
                   {CATEGORY_LABEL[s.place.category]} · {s.place.tags[s.place.tags.length - 1] ?? s.place.description}
                 </Text>
@@ -205,6 +208,7 @@ const styles = StyleSheet.create({
   name: { color: colors.text, fontSize: 15, fontWeight: '700' },
   small: { color: colors.muted, fontSize: 12, marginTop: 6 },
   reason: { color: colors.ok, fontSize: 12, marginTop: 3 },
+  pop: { color: colors.text, fontSize: 13, fontWeight: '800', marginTop: 3 },
   muted: { color: colors.muted, fontSize: 16 },
   back: { minHeight: 40, justifyContent: 'center', alignSelf: 'flex-start' },
   backText: { color: colors.text, fontSize: 14, fontWeight: '600' },
