@@ -1,4 +1,4 @@
-import type { LatLng, TravelEstimate } from '../../domain/types';
+import type { LatLng, TravelChoice, TravelEstimate } from '../../domain/types';
 import type { RouteProvider } from './PlaceProvider';
 import { roughTravel } from './geo';
 
@@ -6,7 +6,7 @@ import { roughTravel } from './geo';
 export class StraightLineRouteProvider implements RouteProvider {
   readonly name = 'straight-line';
 
-  async estimateTravel(from: LatLng, to: LatLng): Promise<TravelEstimate> {
-    return roughTravel(from, to);
+  async estimateTravel(from: LatLng, to: LatLng, choice?: TravelChoice): Promise<TravelEstimate> {
+    return roughTravel(from, to, choice);
   }
 }

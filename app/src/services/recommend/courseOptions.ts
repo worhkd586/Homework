@@ -14,13 +14,14 @@ export async function suggestRegion(
   places: PlaceProvider,
   moodId: MoodId | undefined,
   activities: Activity[] = [],
+  group?: Region['group'],
 ): Promise<{ region: Region; reason: string }> {
   const mood = moodId ? getMood(moodId) : undefined;
   const wanted = new Set<PlaceCategory>([...(mood?.templates.flatMap((t) => t.flow) ?? []), ...activities.map((a) => a.category)]);
   const keywords = activities.flatMap((a) => a.keywords).map((k) => k.toLowerCase());
   const label = [mood?.label, ...activities.map((a) => a.label)].filter(Boolean).join(', ');
   let best: { region: Region; score: number; hits: number } | undefined;
-  for (const region of await shortlist(await places.listRegions(), moodId, activities)) {
+  for (const region of await shortlist((await places.listRegions()).filter((r) => !group || (r.group ?? '서울') === group), moodId, activities)) {
     const list = await places.listPlaces(region.id);
     const matches = list.filter((p) => wanted.has(p.category));
     const keywordHits = list.filter((p) => keywords.some((k) => `${p.name} ${p.description} ${p.tags.join(' ')}`.toLowerCase().includes(k))).length;

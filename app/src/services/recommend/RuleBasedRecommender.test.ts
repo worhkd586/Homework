@@ -237,3 +237,53 @@ describe('preferences and suggestion list', () => {
     expect(list[0].reason).toMatch(/분/);
   });
 });
+
+describe('travel choice (이동 방법)', () => {
+  const recommender = new RuleBasedRecommender(new MockPlaceProvider(), new StraightLineRouteProvider());
+  const base = { regionId: 'seongsu', slotId: 'evening' as const, date: '2026-11-21', startMinute: 17 * 60, endMinute: 22 * 60, pins: [], preferences: [] };
+
+  it('estimates walk, transit and car differently', async () => {
+    const { roughTravel } = await import('../places/geo');
+    const a = { lat: 37.5445, lng: 127.056 };
+    const far = { lat: 37.5665, lng: 126.99 }; // 약 6km
+    expect(roughTravel(a, far, 'walk').mode).toBe('walk');
+    expect(roughTravel(a, far, 'transit').mode).toBe('transit');
+    const car = roughTravel(a, far, 'car');
+    expect(car.mode).toBe('car');
+    expect(car.minutes).toBeLessThan(roughTravel(a, far, 'walk').minutes);
+    expect(roughTravel(a, { lat: 37.5448, lng: 127.0563 }, 'car').mode).toBe('walk'); // 아주 가까우면 걷기
+  });
+
+  it('keeps every leg walkable when walking', async () => {
+    const course = await recommender.recommend({ ...base, travel: 'walk' });
+    for (const leg of course.legs) {
+      expect(leg.travel.mode).toBe('walk');
+      expect(leg.travel.distanceMeters).toBeLessThanOrEqual(1600);
+    }
+  });
+
+  it('uses car times when driving, also after editing', async () => {
+    const course = await recommender.recommend({ ...base, regionId: 'jamsil', travel: 'car' });
+    const edited = await recommender.insertStop(course, course.stops.length);
+    for (const leg of edited.legs) expect(['walk', 'car']).toContain(leg.travel.mode);
+  });
+
+  it('treats old saved courses with walkOnly as walking', async () => {
+    const { travelChoice } = await import('./RuleBasedRecommender');
+    expect(travelChoice({ ...base, prefs: { walkOnly: true } })).toBe('walk');
+    expect(travelChoice(base)).toBe('transit');
+  });
+});
+
+describe('Jeju', () => {
+  it('has Jeju regions and suggests within the chosen group', async () => {
+    const { ALL_REGIONS } = await import('../../domain/regions');
+    const jeju = ALL_REGIONS.filter((r) => r.group === '제주');
+    expect(jeju.length).toBeGreaterThanOrEqual(6);
+    for (const r of jeju) expect(r.center.lat).toBeLessThan(34);
+    const { suggestRegion } = await import('./courseOptions');
+    const { MockPlaceProvider: Mock } = await import('../places/MockPlaceProvider');
+    const { region } = await suggestRegion(new Mock(ALL_REGIONS, PLACES), 'talk', [], '제주');
+    expect(region.group).toBe('제주');
+  });
+});

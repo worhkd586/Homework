@@ -255,7 +255,7 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
                 {leg ? (
                   <View style={styles.legRow}>
                     <Text style={styles.legPill}>
-                      {leg.travel.mode === 'walk' ? '🚶 도보' : '🚇 대중교통(어림)'} {leg.travel.minutes}분 · {(leg.travel.distanceMeters / 1000).toFixed(1)}km
+                      {leg.travel.mode === 'walk' ? '🚶 도보' : leg.travel.mode === 'car' ? '🚗 차(어림)' : '🚇 대중교통(어림)'} {leg.travel.minutes}분 · {(leg.travel.distanceMeters / 1000).toFixed(1)}km
                       {s.slackMinutes > 0 ? <Text style={{ color: colors.ok }}> · 여유 {s.slackMinutes}분</Text> : null}
                     </Text>
                     {!(panel?.kind === 'add' && panel.index === i + 1) && addSlot(i + 1)}

@@ -1,4 +1,4 @@
-import type { LatLng, Place, Region, TravelEstimate } from '../../domain/types';
+import type { LatLng, Place, Region, TravelChoice, TravelEstimate } from '../../domain/types';
 
 /**
  * 장소 데이터의 경계(interface).
@@ -24,5 +24,6 @@ export interface PlaceProvider {
  */
 export interface RouteProvider {
   readonly name: string;
-  estimateTravel(from: LatLng, to: LatLng): Promise<TravelEstimate>;
+  /** choice: 사용자가 고른 이동 방법 (걸어서 / 대중교통 / 차) */
+  estimateTravel(from: LatLng, to: LatLng, choice?: TravelChoice): Promise<TravelEstimate>;
 }

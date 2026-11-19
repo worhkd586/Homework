@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import Text from '../ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { Course, PinnedPlace, Place, Region, TimeSlotId } from '../domain/types';
+import type { Course, PinnedPlace, Place, Region, TimeSlotId, TravelChoice } from '../domain/types';
 import { BUDGETS, VIBES, type CoursePrefs } from '../domain/prefs';
 import { recommendOptions, suggestRegion } from '../services/recommend/courseOptions';
 import type { SavedCourse } from '../lib/savedCourses';
@@ -20,6 +20,11 @@ export interface CourseOptions {
 }
 
 const AUTO = 'auto';
+const TRAVEL_CHOICES: Array<{ id: TravelChoice; emoji: string; label: string; hint: string }> = [
+  { id: 'walk', emoji: '🚶', label: '걸어서', hint: '가까운 곳만' },
+  { id: 'transit', emoji: '🚇', label: '대중교통', hint: '가까우면 도보' },
+  { id: 'car', emoji: '🚗', label: '차로', hint: '주차 5분 포함' },
+];
 /** 접힌 상태에서 보이는 지역 수 (✨추천 타일과 함께 2칸 × 4줄) */
 const COLLAPSED_REGIONS = 7;
 const GRID_COLUMNS = 5;
@@ -43,7 +48,10 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
   const [wishHint, setWishHint] = useState<string>();
   const [regions, setRegions] = useState<Region[]>([]);
   const [regionId, setRegionId] = useState<string>();
-  const [group, setGroup] = useState<'서울' | '경기'>('서울');
+  const [group, setGroup] = useState<'서울' | '경기' | '제주'>('서울');
+  // 이동 방법. 직접 고르기 전에는 지역에 맞춰 (제주는 차, 나머지는 대중교통)
+  const [travel, setTravel] = useState<TravelChoice>('transit');
+  const [travelPicked, setTravelPicked] = useState(false);
   /** 지역은 처음엔 몇 곳만 보이고 '더 보기'로 펼친다 (화면을 짧게) */
   const [allRegions, setAllRegions] = useState(false);
   /** 30분 단위 시간표는 '직접 고르기'를 눌렀을 때만 연다 */
@@ -82,6 +90,12 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
   useEffect(() => {
     placeProvider.listRegions().then(setRegions);
   }, []);
+
+  useEffect(() => {
+    if (!regionId || travelPicked) return;
+    const g = regionId === AUTO ? group : regions.find((r) => r.id === regionId)?.group;
+    setTravel(g === '제주' ? 'car' : 'transit');
+  }, [regionId, group]);
 
   useEffect(() => {
     setMustGo(null);
@@ -152,7 +166,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
       let region = regions.find((r) => r.id === regionId);
       let note: string | undefined;
       if (regionId === AUTO) {
-        const suggestion = await suggestRegion(placeProvider, undefined, activities);
+        const suggestion = await suggestRegion(placeProvider, undefined, activities, group);
         region = suggestion.region;
         note = `✨ ${region.name} 추천 · ${suggestion.reason}`;
       }
@@ -169,6 +183,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
           endMinute: range.end,
           pins: mustGo ? [mustGo] : [],
           prefs,
+          travel,
         },
         undefined,
         region.name,
@@ -261,7 +276,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
 
         <Text style={styles.h2}>어디서 만나요?</Text>
         <View style={[styles.row, { marginBottom: 10 }]}>
-          {(['서울', '경기'] as const).map((g) => (
+          {(['서울', '경기', '제주'] as const).map((g) => (
             <Pressable key={g} style={[styles.groupTab, group === g && styles.groupTabOn]} onPress={() => setGroup(g)}>
               <Text style={[styles.groupTabText, group === g && { color: colors.onAccent }]}>{g}</Text>
             </Pressable>
@@ -376,9 +391,32 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
               </Pressable>
             );
           })}
-          <Pressable style={[styles.chip, prefs.walkOnly && styles.chipOn]} onPress={() => setPrefs({ ...prefs, walkOnly: !prefs.walkOnly })} accessibilityState={{ selected: !!prefs.walkOnly }}>
-            <Text style={[styles.chipText, prefs.walkOnly && styles.chipOnText]}>🚶 걸어서만</Text>
-          </Pressable>
+        </View>
+
+        <View style={styles.sectionHead}>
+          <Text style={[styles.h2, styles.h2InRow]}>어떻게 이동해요?</Text>
+          <Text style={styles.small}>이동시간을 이걸로 계산해요</Text>
+        </View>
+        <View style={styles.row}>
+          {TRAVEL_CHOICES.map((t) => {
+            const on = travel === t.id;
+            return (
+              <Pressable
+                key={t.id}
+                style={[styles.slot, on && styles.selected]}
+                onPress={() => {
+                  setTravel(t.id);
+                  setTravelPicked(true);
+                }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+              >
+                <Text style={styles.slotEmoji}>{t.emoji}</Text>
+                <Text style={styles.tileTitle}>{t.label}</Text>
+                <Text style={styles.small}>{t.hint}</Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         <Text style={styles.h2}>꼭 갈 곳 있어요? (선택)</Text>

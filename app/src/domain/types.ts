@@ -19,7 +19,7 @@ export interface Region {
   tagline: string;
   center: LatLng;
   /** 지역 고르기 화면의 묶음 */
-  group?: '서울' | '경기';
+  group?: '서울' | '경기' | '제주';
   /** 장소를 찾을 반경(m). 교외는 넓게 */
   radius?: number;
   /** 이 동네가 잘하는 것 (지역 추천의 1차 후보를 고를 때 씀) */
@@ -60,7 +60,10 @@ export interface TimeSlot {
   flow: PlaceCategory[];
 }
 
-export type TravelMode = 'walk' | 'transit';
+export type TravelMode = 'walk' | 'transit' | 'car';
+
+/** 설정 화면에서 고르는 이동 방법. transit = 가까우면 걷고 멀면 대중교통 */
+export type TravelChoice = 'walk' | 'transit' | 'car';
 
 export interface TravelEstimate {
   mode: TravelMode;
@@ -92,7 +95,9 @@ export interface CourseRequest {
   keywords?: string[];
   /** 고른 주제: 이 종류 자리에는 match 말이 이름·분류에 들어간 곳만 (있을 때) 넣는다 */
   wishes?: Array<{ category: PlaceCategory; match: string[] }>;
-  /** 내 취향 (분위기·가격대·실내외·걸어서만) */
+  /** 이동 방법 (없으면 대중교통) */
+  travel?: TravelChoice;
+  /** 내 취향 (분위기·가격대·실내외) */
   prefs?: import('./prefs').CoursePrefs;
   /** 시간대 기본 흐름 대신 쓸 흐름 (기분별 코스 템플릿) */
   flow?: PlaceCategory[];

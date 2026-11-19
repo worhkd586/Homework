@@ -1,5 +1,6 @@
 import type {
   Course,
+  TravelChoice,
   CourseLeg,
   CourseRequest,
   CourseStop,
@@ -14,6 +15,7 @@ import type { PlaceProvider, RouteProvider } from '../places/PlaceProvider';
 import { defaultStayMinutes } from '../places/mockData';
 import type { CourseRecommender, StopSuggestion } from './CourseRecommender';
 import { prefScore } from '../../domain/prefs';
+import { MAX_WALK_METERS } from '../places/geo';
 
 /** 시간 배분 단계에서 쓰는 이동시간 어림값 */
 const TRAVEL_BUFFER = 15;
@@ -47,6 +49,16 @@ const stayOf = (place: Place) => place.stayMinutes ?? defaultStayMinutes(place.c
 const itemStay = (item: Item) => (item.kind === 'pin' ? stayOf(item.pin.place) : defaultStayMinutes(item.category));
 const minStay = (stay: number) => Math.round(stay * MIN_STAY_RATIO);
 
+export const TRAVEL_WORD: Record<'walk' | 'transit' | 'car', string> = { walk: '도보', transit: '대중교통', car: '차' };
+
+/** 요청의 이동 방법 (예전에 저장한 코스의 '걸어서만'도 걸어서로) */
+export function travelChoice(request: CourseRequest): TravelChoice {
+  return request.travel ?? (request.prefs?.walkOnly ? 'walk' : 'transit');
+}
+
+/** 걸어서 고르면 너무 먼 곳은 빼고, 이동 시간에 더 민감하게 */
+const tooFarToWalk = (choice: TravelChoice, t: { distanceMeters: number } | undefined) => choice === 'walk' && !!t && t.distanceMeters > MAX_WALK_METERS;
+
 export function isOpenDuring(place: Place, from: number, to: number): boolean {
   const open = place.openMinute;
   let close = place.closeMinute;
@@ -71,6 +83,7 @@ export class RuleBasedRecommender implements CourseRecommender {
     if (!region) throw new Error(`unknown region: ${request.regionId}`);
     const candidates = await this.places.listPlaces(region.id);
     const warnings: CourseWarning[] = [];
+    const mode = travelChoice(request);
 
     for (const pin of request.pins) {
       if (pin.place.regionId !== region.id) {
@@ -150,7 +163,7 @@ export class RuleBasedRecommender implements CourseRecommender {
       const item = sequence[i];
       if (item.kind === 'pin') {
         const { pin } = item;
-        if (planned.length) clock += (await this.routes.estimateTravel(prevLoc, pin.place.location)).minutes;
+        if (planned.length) clock += (await this.routes.estimateTravel(prevLoc, pin.place.location, mode)).minutes;
         if (pin.fixedMinute !== undefined) clock = Math.max(clock, pin.fixedMinute);
         planned.push({
           place: pin.place,
@@ -177,20 +190,19 @@ export class RuleBasedRecommender implements CourseRecommender {
           const strict = pool.filter((p) => matchesTheme(p, match));
           if (strict.length || !LAST_RESORT.includes(category) || category === item.category) pool = strict;
         }
-        const walkOnly = !!request.prefs?.walkOnly && planned.length > 0;
         for (const place of pool) {
-          const toHere = await this.routes.estimateTravel(prevLoc, place.location);
-          if (walkOnly && toHere.mode !== 'walk') continue;
+          const toHere = await this.routes.estimateTravel(prevLoc, place.location, mode);
+          if (planned.length && tooFarToWalk(mode, toHere)) continue;
           const arrive = clock + (planned.length ? toHere.minutes : 0);
           if (!isOpenDuring(place, arrive, arrive + minStay(stay))) continue;
-          const toNext = nextPin ? (await this.routes.estimateTravel(place.location, nextPin.pin.place.location)).minutes : 0;
+          const toNext = nextPin ? (await this.routes.estimateTravel(place.location, nextPin.pin.place.location, mode)).minutes : 0;
           const prefHits = place.tags.filter((t) => request.preferences.includes(t)).length + (matchesKeyword(place, request.keywords) ? 2 : 0);
           const score =
             place.rating * 20 +
             (isFlagship(place) ? 25 : 0) +
             prefHits * 8 +
             prefScore(place, request.prefs).score -
-            toHere.minutes * (request.prefs?.walkOnly ? 1.5 : 0.8) -
+            toHere.minutes * (mode === 'walk' ? 1.5 : 0.8) -
             toNext * 0.4 -
             (avoided.has(place.id) ? 40 : 0);
           if (!best || score > best.score) best = { place, score, travel: toHere.minutes, mode: toHere.mode };
@@ -225,7 +237,7 @@ export class RuleBasedRecommender implements CourseRecommender {
         legs.push({
           fromPlaceId: planned[i - 1].place.id,
           toPlaceId: planned[i].place.id,
-          travel: await this.routes.estimateTravel(planned[i - 1].place.location, planned[i].place.location),
+          travel: await this.routes.estimateTravel(planned[i - 1].place.location, planned[i].place.location, mode),
         });
       }
       scheduleWarnings = [];
@@ -268,15 +280,16 @@ export class RuleBasedRecommender implements CourseRecommender {
     const usedCategories = new Set(planned.map((p) => p.place.category));
     const prevStop = course.stops[at - 1];
     const clock = prevStop ? prevStop.leaveMinute : request.startMinute;
+    const mode = travelChoice(request);
     const out: StopSuggestion[] = [];
     for (const candidate of candidates) {
       if (used.has(candidate.id)) continue;
       if (options.category && candidate.category !== options.category) continue;
-      const toHere = prev ? await this.routes.estimateTravel(prev.place.location, candidate.location) : undefined;
-      if (request.prefs?.walkOnly && toHere && toHere.mode !== 'walk') continue;
+      const toHere = prev ? await this.routes.estimateTravel(prev.place.location, candidate.location, mode) : undefined;
+      if (tooFarToWalk(mode, toHere)) continue;
       const arrive = clock + (toHere?.minutes ?? 0);
       if (!isOpenDuring(candidate, arrive, arrive + minStay(stayOf(candidate)))) continue;
-      const toNext = next ? (await this.routes.estimateTravel(candidate.location, next.place.location)).minutes : 0;
+      const toNext = next ? (await this.routes.estimateTravel(candidate.location, next.place.location, mode)).minutes : 0;
       const pref = prefScore(candidate, request.prefs);
       const wished = matchesKeyword(candidate, request.keywords);
       const score =
@@ -288,7 +301,7 @@ export class RuleBasedRecommender implements CourseRecommender {
         (toHere?.minutes ?? 0) * 0.8 -
         toNext * 0.8;
       const why = [popularityLabel(candidate)];
-      if (toHere) why.push(`${toHere.mode === 'walk' ? '도보' : '대중교통'} ${toHere.minutes}분`);
+      if (toHere) why.push(`${TRAVEL_WORD[toHere.mode]} ${toHere.minutes}분`);
       if (isFlagship(candidate)) why.push('대표 명소');
       if (wished) why.push('하고 싶은 것');
       why.push(...pref.reasons);
@@ -353,7 +366,7 @@ export class RuleBasedRecommender implements CourseRecommender {
       legs.push({
         fromPlaceId: planned[i - 1].place.id,
         toPlaceId: planned[i].place.id,
-        travel: await this.routes.estimateTravel(planned[i - 1].place.location, planned[i].place.location),
+        travel: await this.routes.estimateTravel(planned[i - 1].place.location, planned[i].place.location, travelChoice(course.request)),
       });
     }
     const keptIds = new Set(planned.map((p) => p.place.id));
