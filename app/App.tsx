@@ -3,7 +3,7 @@ import { BackHandler, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Course } from './src/domain/types';
-import { loadSaved, newId, writeSaved, type SavedCourse } from './src/lib/savedCourses';
+import { loadSaved, newId, today, writeSaved, type DateLog, type SavedCourse, type Verdict } from './src/lib/savedCourses';
 import SetupScreen, { type CourseOptions } from './src/screens/SetupScreen';
 import ResultScreen from './src/screens/ResultScreen';
 
@@ -56,6 +56,34 @@ export default function App() {
     setCurrent({ ...current, savedIds: current.savedIds.map((s, i) => (i === current.selected ? id : s)) });
   }
 
+  /** 다녀왔어요: 저장 안 한 코스면 먼저 저장하고, 오늘 날짜로 로그를 만든다 */
+  function markVisited() {
+    if (!current) return;
+    let id = current.savedIds[current.selected];
+    let list = saved;
+    if (!id) {
+      id = newId();
+      list = [{ id, savedAt: new Date().toISOString(), course: current.options[current.selected] }, ...saved];
+      setCurrent({ ...current, savedIds: current.savedIds.map((s, i) => (i === current.selected ? id : s)) });
+    }
+    persist(list.map((s) => (s.id === id && !s.log ? { ...s, log: { visitedOn: today(), ratings: {} } } : s)));
+  }
+
+  function updateLog(change: (log: DateLog) => DateLog) {
+    const id = current?.savedIds[current.selected];
+    if (!id) return;
+    persist(saved.map((s) => (s.id === id && s.log ? { ...s, log: change(s.log) } : s)));
+  }
+
+  function rate(placeId: string, verdict: Verdict) {
+    updateLog((log) => {
+      const ratings = { ...log.ratings };
+      if (ratings[placeId] === verdict) delete ratings[placeId]; // 같은 걸 다시 누르면 취소
+      else ratings[placeId] = verdict;
+      return { ...log, ratings };
+    });
+  }
+
   function openSaved(item: SavedCourse) {
     setCurrent({ options: [item.course], selected: 0, savedIds: [item.id] });
     setShowResult(true);
@@ -89,6 +117,10 @@ export default function App() {
           note={current.note}
           selected={current.selected}
           isSaved={!!current.savedIds[current.selected]}
+          log={saved.find((s) => s.id === current.savedIds[current.selected])?.log}
+          onVisited={markVisited}
+          onRate={rate}
+          onMemo={(memo) => updateLog((log) => ({ ...log, memo }))}
           onSelect={(i) => setCurrent({ ...current, selected: i })}
           onChange={changeCourse}
           onSave={saveCourse}

@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Course, PinnedPlace, Place, Region, TimeSlotId, TravelChoice } from '../domain/types';
 import { BUDGETS, VIBES, type CoursePrefs } from '../domain/prefs';
 import { recommendOptions, suggestRegion } from '../services/recommend/courseOptions';
-import type { SavedCourse } from '../lib/savedCourses';
+import { placeVerdicts, type SavedCourse } from '../lib/savedCourses';
 import { ACTIVITY_EXAMPLES, parseActivity, type Activity } from '../domain/activities';
 import { CATEGORY_EMOJI, CATEGORY_LABEL, MIN_RANGE, RANGE_FIRST, RANGE_LAST, TIME_SLOTS, formatDuration, formatMinute, isSlotRange, slotForRange } from '../domain/timeSlots';
 import { placeProvider, recommender } from '../lib/services';
@@ -184,6 +184,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
           pins: mustGo ? [mustGo] : [],
           prefs,
           travel,
+          ...placeVerdicts(saved),
         },
         undefined,
         region.name,
@@ -212,7 +213,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
 
         {saved.length > 0 && (
           <>
-            <Text style={styles.h2}>내 코스</Text>
+            <Text style={styles.h2}>{saved.some((s) => s.log) ? '내 코스 · 데이트 로그' : '내 코스'}</Text>
             {saved.map((item) => {
               const c = item.course;
               const first = c.stops[0];
@@ -222,9 +223,17 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
                     <Text style={styles.tileTitle} numberOfLines={1}>
                       {c.title}
                     </Text>
-                    <Text style={styles.small} numberOfLines={1}>
-                      {c.request.date} · {first ? formatMinute(first.arriveMinute) : '--:--'} 시작 · {c.stops.length}곳 · 탭해서 수정
-                    </Text>
+                    {item.log ? (
+                      <Text style={styles.small} numberOfLines={1}>
+                        📒 {item.log.visitedOn.slice(5).replace('-', '/')} 다녀옴 · 👍 {Object.values(item.log.ratings).filter((v) => v === 'good').length} · 👎{' '}
+                        {Object.values(item.log.ratings).filter((v) => v === 'bad').length}
+                        {item.log.memo ? ` · ${item.log.memo}` : ''}
+                      </Text>
+                    ) : (
+                      <Text style={styles.small} numberOfLines={1}>
+                        {c.request.date} · {first ? formatMinute(first.arriveMinute) : '--:--'} 시작 · {c.stops.length}곳 · 탭해서 수정
+                      </Text>
+                    )}
                   </View>
                   <Pressable hitSlop={10} onPress={() => onDeleteSaved(item.id)} accessibilityLabel={`${c.title} 삭제`}>
                     <Text style={styles.muted}>✕</Text>

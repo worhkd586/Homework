@@ -287,3 +287,36 @@ describe('Jeju', () => {
     expect(region.group).toBe('제주');
   });
 });
+
+describe('date log (데이트 로그)', () => {
+  const recommender = new RuleBasedRecommender(new MockPlaceProvider(), new StraightLineRouteProvider());
+  const base = { regionId: 'seongsu', slotId: 'evening' as const, date: '2026-11-21', startMinute: 17 * 60, endMinute: 22 * 60, pins: [], preferences: [] };
+
+  it('collects the latest verdict per place across logs', async () => {
+    const { placeVerdicts } = await import('../../lib/savedCourses');
+    const course = await recommender.recommend(base);
+    const [a, b] = course.stops.map((s) => s.place.id);
+    const v = placeVerdicts([
+      { id: '1', savedAt: '', course, log: { visitedOn: '2026-11-01', ratings: { [a]: 'bad', [b]: 'good' } } },
+      { id: '2', savedAt: '', course, log: { visitedOn: '2026-11-10', ratings: { [a]: 'good' } } },
+      { id: '3', savedAt: '', course },
+    ]);
+    expect(v.liked.sort()).toEqual([a, b].sort());
+    expect(v.disliked).toEqual([]);
+  });
+
+  it('drops places marked bad and brings back places marked good', async () => {
+    const first = await recommender.recommend(base);
+    const bad = first.stops[0].place.id;
+    const again = await recommender.recommend({ ...base, disliked: [bad] });
+    expect(again.stops.some((s) => s.place.id === bad)).toBe(false);
+    const list = await recommender.suggestStops(first, 1, { limit: 50 });
+    const pick = list[list.length - 1].place; // 원래 순위가 낮은 곳
+    const boosted = await recommender.suggestStops(first, 1, { limit: 50 });
+    const withLike = await recommender.suggestStops({ ...first, request: { ...first.request, liked: [pick.id] } }, 1, { limit: 50 });
+    expect(withLike.findIndex((s) => s.place.id === pick.id)).toBeLessThan(boosted.findIndex((s) => s.place.id === pick.id));
+    expect(withLike.find((s) => s.place.id === pick.id)!.reason).toContain('전에 좋았던 곳');
+    const withDislike = await recommender.suggestStops({ ...first, request: { ...first.request, disliked: [pick.id] } }, 1, { limit: 50 });
+    expect(withDislike.some((s) => s.place.id === pick.id)).toBe(false);
+  });
+});

@@ -7,6 +7,7 @@ import { CATEGORY_LABEL, formatDuration, formatMinute, getTimeSlot, isSlotRange 
 import { dataSourceNote, placeProvider, recommender } from '../lib/services';
 import { colors, radius, softShadow } from '../ui/theme';
 import PlacePhoto from '../ui/PlacePhoto';
+import type { DateLog, Verdict } from '../lib/savedCourses';
 import PlaceSuggestionList from '../ui/PlaceSuggestionList';
 import { popularityLabel } from '../services/recommend/RuleBasedRecommender';
 
@@ -15,6 +16,11 @@ interface Props {
   note?: string;
   selected: number;
   isSaved: boolean;
+  /** 다녀온 코스면 데이트 로그 */
+  log?: DateLog;
+  onVisited: () => void;
+  onRate: (placeId: string, verdict: Verdict) => void;
+  onMemo: (memo: string) => void;
   onSelect: (index: number) => void;
   onChange: (course: Course) => void;
   onSave: () => void;
@@ -31,7 +37,9 @@ type Panel =
 const optionName = (c: Course) => c.title.split(' · ').slice(1).join(' · ') || c.title;
 
 /** 결과 = 편집 화면. 저장 전이든 후든 언제든 일정을 고칠 수 있다. */
-export default function ResultScreen({ options, note, selected, isSaved, onSelect, onChange, onSave, onBack }: Props) {
+export default function ResultScreen({ options, note, selected, isSaved, log, onVisited, onRate, onMemo, onSelect, onChange, onSave, onBack }: Props) {
+  const [memo, setMemo] = useState(log?.memo ?? '');
+  useEffect(() => setMemo(log?.memo ?? ''), [log?.visitedOn, selected]);
   const course = options[selected];
   const slot = getTimeSlot(course.request.slotId);
   const [panel, setPanel] = useState<Panel | null>(null);
@@ -248,6 +256,30 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
                     </View>
                     {s.pinned && <Text style={styles.badge}>{s.fixedTime ? '🔒 시간 고정' : s.reason === '직접 추가한 곳' ? '📍 직접 추가' : '📌 꼭 갈 곳'}</Text>}
                     {!s.pinned && s.fixedTime && <Text style={styles.badge}>🔒 시간 고정</Text>}
+                    {log && (
+                      <View style={styles.rateRow}>
+                        {(
+                          [
+                            ['good', '👍 좋았어요'],
+                            ['bad', '👎 별로예요'],
+                          ] as const
+                        ).map(([v, label]) => {
+                          const on = log.ratings[s.place.id] === v;
+                          return (
+                            <Pressable
+                              key={v}
+                              style={[styles.rate, on && (v === 'good' ? styles.rateGood : styles.rateBad)]}
+                              onPress={() => onRate(s.place.id, v)}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected: on }}
+                              accessibilityLabel={`${s.place.name} ${label}`}
+                            >
+                              <Text style={[styles.rateText, on && { color: v === 'good' ? colors.onMint : colors.onPink, fontWeight: '800' }]}>{label}</Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    )}
                     {editing && <Text style={styles.reason}>{s.reason}</Text>}
                     {stopPanel(i)}
                   </Pressable>
@@ -269,12 +301,36 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
           })}
         </View>
 
+        {log && (
+          <View style={styles.logCard}>
+            <Text style={styles.logTitle}>📒 {log.visitedOn.slice(5).replace('-', '/')} 데이트 기록</Text>
+            <Text style={styles.small}>좋았던 곳은 다음 추천에 다시 나오고, 별로였던 곳은 빠져요.</Text>
+            <TextInput
+              style={styles.memo}
+              placeholder="한 줄 메모 (예: 파스타 최고, 웨이팅 길었음)"
+              placeholderTextColor={colors.muted}
+              value={memo}
+              onChangeText={setMemo}
+              onEndEditing={() => onMemo(memo.trim())}
+              onBlur={() => onMemo(memo.trim())}
+              multiline
+            />
+          </View>
+        )}
+
         <Text style={[styles.small, { marginTop: 24 }]}>{dataSourceNote()}</Text>
       </ScrollView>
 
       <SafeAreaView edges={['bottom']} style={styles.footer}>
-        {isSaved ? (
-          <Text style={styles.savedNote}>✓ 내 코스에 저장됨 · 고치면 자동으로 저장돼요</Text>
+        {log ? (
+          <Text style={styles.savedNote}>📒 데이트 로그에 기록됨 · 장소마다 👍/👎를 눌러 주세요</Text>
+        ) : isSaved ? (
+          <>
+            <Text style={styles.savedNote}>✓ 내 코스에 저장됨 · 고치면 자동으로 저장돼요</Text>
+            <Pressable style={styles.button} onPress={onVisited} accessibilityLabel="다녀왔어요, 데이트 기록하기">
+              <Text style={styles.buttonText}>✓ 다녀왔어요 · 기록하기</Text>
+            </Pressable>
+          </>
         ) : (
           <View style={styles.footerRow}>
             <Pressable style={styles.secondary} onPress={onBack}>
@@ -318,6 +374,14 @@ const styles = StyleSheet.create({
   addRound: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center', marginLeft: 'auto' },
   addRoundText: { color: colors.accent, fontSize: 20, fontWeight: '700' },
   footerRow: { flexDirection: 'row', gap: 10 },
+  rateRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  rate: { flex: 1, minHeight: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
+  rateGood: { backgroundColor: colors.mint },
+  rateBad: { backgroundColor: colors.pink },
+  rateText: { color: colors.muted, fontSize: 14, fontWeight: '700' },
+  logCard: { marginTop: 20, padding: 16, borderRadius: radius.card, backgroundColor: colors.card, ...softShadow },
+  logTitle: { color: colors.text, fontSize: 17, fontWeight: '800' },
+  memo: { marginTop: 10, minHeight: 64, borderRadius: 14, backgroundColor: colors.surface, color: colors.text, padding: 12, fontSize: 15, textAlignVertical: 'top' },
   secondary: { paddingHorizontal: 22, borderRadius: radius.pill, backgroundColor: colors.card, ...softShadow, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   secondaryText: { color: colors.text, fontSize: 15, fontWeight: '700' },
   title: { color: colors.text, fontSize: 26, fontWeight: '900', letterSpacing: -1, marginTop: 4 },

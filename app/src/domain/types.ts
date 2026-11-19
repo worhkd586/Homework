@@ -95,6 +95,9 @@ export interface CourseRequest {
   keywords?: string[];
   /** 고른 주제: 이 종류 자리에는 match 말이 이름·분류에 들어간 곳만 (있을 때) 넣는다 */
   wishes?: Array<{ category: PlaceCategory; match: string[] }>;
+  /** 데이트 로그에서 좋았던 곳 (다시 추천할 때 가산점) / 별로였던 곳 (추천에서 뺌) */
+  liked?: string[];
+  disliked?: string[];
   /** 이동 방법 (없으면 대중교통) */
   travel?: TravelChoice;
   /** 내 취향 (분위기·가격대·실내외) */

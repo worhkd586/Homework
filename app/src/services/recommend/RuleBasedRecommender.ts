@@ -49,6 +49,9 @@ const stayOf = (place: Place) => place.stayMinutes ?? defaultStayMinutes(place.c
 const itemStay = (item: Item) => (item.kind === 'pin' ? stayOf(item.pin.place) : defaultStayMinutes(item.category));
 const minStay = (stay: number) => Math.round(stay * MIN_STAY_RATIO);
 
+/** 데이트 로그에서 좋았던 곳 가산점 (후기 많은 곳과 비슷하게 겨룰 정도) */
+const LIKED_BONUS = 18;
+
 export const TRAVEL_WORD: Record<'walk' | 'transit' | 'car', string> = { walk: '도보', transit: '대중교통', car: '차' };
 
 /** 요청의 이동 방법 (예전에 저장한 코스의 '걸어서만'도 걸어서로) */
@@ -153,7 +156,8 @@ export class RuleBasedRecommender implements CourseRecommender {
 
     // 3) 빈 자리에 실제 장소를 고른다: 평점·취향은 높게, 앞뒤 이동시간은 짧게.
     const used = new Set<string>(request.pins.map((p) => p.place.id));
-    const excluded = new Set(request.excludePlaceIds ?? []);
+    const excluded = new Set([...(request.excludePlaceIds ?? []), ...(request.disliked ?? [])]);
+    const liked = new Set(request.liked ?? []);
     const avoided = new Set(request.avoidPlaceIds ?? []);
     const planned: Planned[] = [];
     let clock = request.startMinute;
@@ -201,7 +205,8 @@ export class RuleBasedRecommender implements CourseRecommender {
             place.rating * 20 +
             (isFlagship(place) ? 25 : 0) +
             prefHits * 8 +
-            prefScore(place, request.prefs).score -
+            prefScore(place, request.prefs).score +
+            (liked.has(place.id) ? LIKED_BONUS : 0) -
             toHere.minutes * (mode === 'walk' ? 1.5 : 0.8) -
             toNext * 0.4 -
             (avoided.has(place.id) ? 40 : 0);
@@ -218,6 +223,7 @@ export class RuleBasedRecommender implements CourseRecommender {
       used.add(best.place.id);
       const prefs = best.place.tags.filter((t) => request.preferences.includes(t));
       const parts = [`${CATEGORY_LABEL[best.place.category]} · ${popularityLabel(best.place)}`];
+      if (liked.has(best.place.id)) parts.push('💜 전에 좋았던 곳');
       if (isFlagship(best.place)) parts.push('대표 명소');
       if (prefs.length) parts.push(prefs.map((t) => `‘${t}’`).join(' ') + ' 취향');
       parts.push(...prefScore(best.place, request.prefs).reasons);
@@ -276,7 +282,8 @@ export class RuleBasedRecommender implements CourseRecommender {
     const prev = planned[at - 1];
     const next = planned[at];
     const candidates = await this.places.listPlaces(request.regionId);
-    const used = new Set([...planned.map((p) => p.place.id), ...(options.avoidIds ?? [])]);
+    const used = new Set([...planned.map((p) => p.place.id), ...(options.avoidIds ?? []), ...(request.disliked ?? [])]);
+    const liked = new Set(request.liked ?? []);
     const usedCategories = new Set(planned.map((p) => p.place.category));
     const prevStop = course.stops[at - 1];
     const clock = prevStop ? prevStop.leaveMinute : request.startMinute;
@@ -297,11 +304,13 @@ export class RuleBasedRecommender implements CourseRecommender {
         (isFlagship(candidate) ? 25 : 0) +
         (usedCategories.has(candidate.category) ? 0 : 10) +
         (wished ? 16 : 0) +
+        (liked.has(candidate.id) ? LIKED_BONUS : 0) +
         pref.score -
         (toHere?.minutes ?? 0) * 0.8 -
         toNext * 0.8;
       const why = [popularityLabel(candidate)];
       if (toHere) why.push(`${TRAVEL_WORD[toHere.mode]} ${toHere.minutes}분`);
+      if (liked.has(candidate.id)) why.push('💜 전에 좋았던 곳');
       if (isFlagship(candidate)) why.push('대표 명소');
       if (wished) why.push('하고 싶은 것');
       why.push(...pref.reasons);
