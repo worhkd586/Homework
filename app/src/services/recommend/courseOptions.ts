@@ -70,30 +70,40 @@ export function shortlist(regions: Region[], moodId: MoodId | undefined, activit
 /** 기분을 안 골랐을 때 쓰는 기본 코스 3개 */
 const MIXED: CourseTemplate[] = [MOODS[0].templates[0], MOODS[1].templates[0], MOODS[2].templates[0]];
 
-/** 이보다 긴 범위면 흐름을 시간에 맞춰 다시 짠다 (기본 시간대는 3시간 반~5시간) */
-const LONG_RANGE = 5 * 60 + 30;
+/** 식사 시각: 이 사이에 시계가 오면 식사를 넣는다 */
+const LUNCH: [number, number] = [11 * 60, 12 * 60 + 30];
+const DINNER: [number, number] = [17 * 60, 19 * 60 + 30];
 
 /**
- * 고른 시간이 길면(예: 12:00~22:00) 일정을 시간 순서에 맞춰 다시 짠다.
- * - 점심(11:00~13:30)·저녁(17:30~19:30) 시각이 되면 식사를 넣고
- * - 나머지는 원래 흐름 순서대로 쓰되, 술은 18시 이후, 전시는 17시 전에만
- * - 원래 흐름을 다 쓰면 그 시각의 시간대 흐름에서 덜 쓴 종류로 채운다 (최대 7곳)
+ * 고른 시간에 맞춰 일정 순서를 짠다 (짧든 길든 항상).
+ * - 점심(11:00~12:30)·저녁(17:00~19:30) 시각이 되면 식사를 넣고, 그 밖의 시각엔 식사를 넣지 않는다
+ * - 나머지는 원래 흐름 순서대로 쓰되, 술은 18시 이후 · 저녁 먹은 뒤, 전시는 16시 반 전에만
+ * - 같은 종류는 한 번만 (카페는 8시간 넘으면 두 번, 산책은 7시간 넘으면 두 번)
+ * - 원래 흐름을 다 쓰면 그 시각의 시간대 흐름에서 아직 안 쓴 종류로 채운다 (최대 7곳)
+ * - 맛집을 원했는데 식사 시각이 없으면 맨 앞에 식사를 넣는다
  */
-export function fitFlowToRange(flow: PlaceCategory[], start: number, end: number): PlaceCategory[] {
-  if (end - start <= LONG_RANGE) return flow;
+export function fitFlowToRange(flow: PlaceCategory[], start: number, end: number, must: PlaceCategory[] = []): PlaceCategory[] {
+  const span = end - start;
+  const limit = (c: PlaceCategory) => (c === 'restaurant' ? 2 : c === 'cafe' && span >= 8 * 60 ? 2 : c === 'walk' && span >= 7 * 60 ? 2 : 1);
   const queue = flow.filter((c) => c !== 'restaurant');
   const out: PlaceCategory[] = [];
+  const count = (c: PlaceCategory) => out.filter((x) => x === c).length;
+  const dinnerPlanned = () => DINNER[1] <= start || out.includes('restaurant') || end < DINNER[0] + 60;
   const fits = (c: PlaceCategory, clock: number) =>
-    c !== out[out.length - 1] && (c !== 'bar' || clock >= 18 * 60) && (c !== 'culture' || clock < 17 * 60);
+    c !== 'restaurant' &&
+    c !== out[out.length - 1] &&
+    count(c) < limit(c) &&
+    (c !== 'bar' || (clock >= 18 * 60 && dinnerPlanned())) &&
+    (c !== 'culture' || clock <= 16 * 60 + 30);
   let clock = start;
   let lunch = false;
   let dinner = false;
   while (out.length < 7 && end - clock > 60) {
     let next: PlaceCategory | undefined;
-    if (!lunch && clock >= 11 * 60 && clock <= 13 * 60 + 30) {
+    if (!lunch && clock >= LUNCH[0] && clock <= LUNCH[1]) {
       next = 'restaurant';
       lunch = true;
-    } else if (!dinner && clock >= 17 * 60 + 30 && clock <= 19 * 60 + 30) {
+    } else if (!dinner && clock >= DINNER[0] && clock <= DINNER[1]) {
       next = 'restaurant';
       dinner = true;
     } else {
@@ -101,13 +111,26 @@ export function fitFlowToRange(flow: PlaceCategory[], start: number, end: number
       if (i >= 0) next = queue.splice(i, 1)[0];
       else {
         const slot = TIME_SLOTS.find((t) => clock >= t.defaultStart && clock < t.defaultEnd) ?? TIME_SLOTS[TIME_SLOTS.length - 1];
-        const count = (c: PlaceCategory) => out.filter((x) => x === c).length;
-        next = slot.flow.filter((c) => c !== 'restaurant' && fits(c, clock)).sort((x, y) => count(x) - count(y))[0];
+        next = [...slot.flow, 'cafe', 'walk', 'shop'].filter((c) => fits(c as PlaceCategory, clock)).sort((x, y) => count(x as PlaceCategory) - count(y as PlaceCategory))[0] as PlaceCategory | undefined;
       }
     }
-    if (!next) break;
+    if (!next) {
+      // 지금 시각엔 넣을 게 없으면 (예: 17시 전인데 남은 게 술뿐) 30분 기다렸다가 다시 본다
+      clock += 30;
+      continue;
+    }
     out.push(next);
     clock += defaultStayMinutes(next) + 15;
+  }
+  if (flow.includes('restaurant') && !out.includes('restaurant')) out.unshift('restaurant');
+  // 꼭 하고 싶다고 고른 것은 시간이 안 맞아도 넣는다: 전시·체험은 맨 앞(일찍 닫으니까), 나머지는 술 앞
+  for (const c of must) {
+    if (out.includes(c)) continue;
+    if (c === 'culture' || c === 'activity') out.unshift(c);
+    else {
+      const bar = out.indexOf('bar');
+      out.splice(bar >= 0 ? bar : out.length, 0, c);
+    }
   }
   return out.length ? out : flow;
 }
@@ -140,7 +163,12 @@ export async function recommendOptions(
   for (const template of mood?.templates ?? MIXED) {
     const request: CourseRequest = {
       ...base,
-      flow: fitFlowToRange(ensureActivities(withMeal(template.flow, base.slotId as TimeSlotId), activities), base.startMinute, base.endMinute),
+      flow: fitFlowToRange(
+        ensureActivities(withMeal(template.flow, base.slotId as TimeSlotId), activities),
+        base.startMinute,
+        base.endMinute,
+        activities.map((a) => a.category),
+      ),
       title: `${regionName} · ${template.name}`,
       preferences: mood?.preferences ?? [],
       keywords: activities.flatMap((a) => a.keywords),

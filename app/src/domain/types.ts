@@ -24,6 +24,8 @@ export interface Region {
   radius?: number;
   /** 이 동네가 잘하는 것 (지역 추천의 1차 후보를 고를 때 씀) */
   strengths?: string[];
+  /** 이 동네의 이름난 데이트 명소. 카카오에서 이름으로 찾아 후보에 더하고 가산점을 준다 */
+  picks?: string[];
 }
 
 export interface Place {
@@ -45,6 +47,8 @@ export interface Place {
   description: string;
   /** 지도 앱에서 열 링크 (실제 데이터일 때) */
   url?: string;
+  /** 동네별로 골라 둔 데이트 명소 (regions.ts의 picks) */
+  pick?: boolean;
 }
 
 export type TimeSlotId = 'lunch' | 'afternoon' | 'evening' | 'night';

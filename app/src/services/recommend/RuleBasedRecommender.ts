@@ -16,6 +16,7 @@ import { defaultStayMinutes } from '../places/mockData';
 import type { CourseRecommender, StopSuggestion } from './CourseRecommender';
 import { prefScore } from '../../domain/prefs';
 import { MAX_WALK_METERS } from '../places/geo';
+import { dateFit, isChain, samePlaceFamily, trustedReviews } from './dateFit';
 
 /** 시간 배분 단계에서 쓰는 이동시간 어림값 */
 const TRAVEL_BUFFER = 15;
@@ -184,16 +185,35 @@ export class RuleBasedRecommender implements CourseRecommender {
 
       const nextPin = sequence.slice(i + 1).find((it): it is Extract<Item, { kind: 'pin' }> => it.kind === 'pin');
       const stay = defaultStayMinutes(item.category);
-      let best: { place: Place; score: number; travel: number; mode: string } | undefined;
-      for (const category of [item.category, ...(ALTERNATES[item.category] ?? []), ...LAST_RESORT]) {
-        if (best) break;
-        let pool = candidates.filter((p) => p.category === category && !used.has(p.id) && !excluded.has(p.id));
+      let best: { place: Place; score: number; travel: number; mode: string; tier: number } | undefined;
+      const usedCats = new Set(planned.map((p) => p.place.category));
+      // 원하는 주제 자리는 그 종류 먼저. 그냥 채우는 자리는 비슷한 종류(예: 놀거리 ↔ 전시)와 함께 겨뤄서
+      // 그 종류의 후보가 시원찮으면(후기 적은 동네 체험 등) 더 좋은 다른 종류를 쓴다.
+      const wished = (request.wishes ?? []).some((w) => w.category === item.category);
+      const alternates = ALTERNATES[item.category] ?? [];
+      const DOING: PlaceCategory[] = ['culture', 'activity', 'shop', 'walk'];
+      const flexible = !wished && DOING.includes(item.category);
+      // 뒤에 나올 자리의 종류와는 겨루지 않는다 (같은 종류가 두 번 나오지 않게)
+      const later = new Set(sequence.slice(i + 1).flatMap((it) => (it.kind === 'fill' ? [it.category] : [])));
+      const tiers = flexible
+        ? [[item.category, ...alternates.filter((c) => DOING.includes(c) && !later.has(c))], LAST_RESORT] : [[item.category], alternates, LAST_RESORT];
+      const flat = tiers.flatMap((tier, t) => tier.map((category) => ({ category, t })));
+      for (const { category, t } of flat) {
+        if (best && best.tier < t) break;
+        // 대신 채울 때는 이미 코스에 있는 종류는 피한다 (카페 두 번, 산책 두 번 같은 반복)
+        if (category !== item.category && usedCats.has(category)) continue;
+        const alternatePenalty = category === item.category ? 0 : 25;
+        let pool = candidates.filter(
+          (p) => p.category === category && !used.has(p.id) && !excluded.has(p.id) && !planned.some((q) => samePlaceFamily(p, q.place)),
+        );
         // 고른 주제 자리면 주제에 맞는 곳만. 정말 없을 때만 마지막 대안(산책·술·카페)으로 채운다.
         const match = (request.wishes ?? []).filter((w) => w.category === item.category && w.match.length).flatMap((w) => w.match);
         if (match.length) {
           const strict = pool.filter((p) => matchesTheme(p, match));
           if (strict.length || !LAST_RESORT.includes(category) || category === item.category) pool = strict;
         }
+        // 체인점은 다른 곳이 하나도 없을 때만
+        if (pool.some((p) => !isChain(p))) pool = pool.filter((p) => !isChain(p));
         for (const place of pool) {
           const toHere = await this.routes.estimateTravel(prevLoc, place.location, mode);
           if (planned.length && tooFarToWalk(mode, toHere)) continue;
@@ -206,11 +226,13 @@ export class RuleBasedRecommender implements CourseRecommender {
             (isFlagship(place) ? 25 : 0) +
             prefHits * 8 +
             prefScore(place, request.prefs).score +
+            dateFit(place, request.prefs).score +
             (liked.has(place.id) ? LIKED_BONUS : 0) -
             toHere.minutes * (mode === 'walk' ? 1.5 : 0.8) -
             toNext * 0.4 -
+            alternatePenalty -
             (avoided.has(place.id) ? 40 : 0);
-          if (!best || score > best.score) best = { place, score, travel: toHere.minutes, mode: toHere.mode };
+          if (!best || score > best.score) best = { place, score, travel: toHere.minutes, mode: toHere.mode, tier: t };
         }
       }
       if (!best) {
@@ -225,6 +247,7 @@ export class RuleBasedRecommender implements CourseRecommender {
       const parts = [`${CATEGORY_LABEL[best.place.category]} · ${popularityLabel(best.place)}`];
       if (liked.has(best.place.id)) parts.push('💜 전에 좋았던 곳');
       if (isFlagship(best.place)) parts.push('대표 명소');
+      else parts.push(...dateFit(best.place, request.prefs).reasons);
       if (prefs.length) parts.push(prefs.map((t) => `‘${t}’`).join(' ') + ' 취향');
       parts.push(...prefScore(best.place, request.prefs).reasons);
       planned.push({ place: best.place, reason: parts.join(' · ') });
@@ -298,6 +321,7 @@ export class RuleBasedRecommender implements CourseRecommender {
       if (!isOpenDuring(candidate, arrive, arrive + minStay(stayOf(candidate)))) continue;
       const toNext = next ? (await this.routes.estimateTravel(candidate.location, next.place.location, mode)).minutes : 0;
       const pref = prefScore(candidate, request.prefs);
+      const fit = dateFit(candidate, request.prefs);
       const wished = matchesKeyword(candidate, request.keywords);
       const score =
         popularityPoints(candidate) +
@@ -305,13 +329,15 @@ export class RuleBasedRecommender implements CourseRecommender {
         (usedCategories.has(candidate.category) ? 0 : 10) +
         (wished ? 16 : 0) +
         (liked.has(candidate.id) ? LIKED_BONUS : 0) +
-        pref.score -
+        pref.score +
+        fit.score -
         (toHere?.minutes ?? 0) * 0.8 -
         toNext * 0.8;
       const why = [popularityLabel(candidate)];
       if (toHere) why.push(`${TRAVEL_WORD[toHere.mode]} ${toHere.minutes}분`);
       if (liked.has(candidate.id)) why.push('💜 전에 좋았던 곳');
       if (isFlagship(candidate)) why.push('대표 명소');
+      else why.push(...fit.reasons);
       if (wished) why.push('하고 싶은 것');
       why.push(...pref.reasons);
       out.push({ place: candidate, score, travel: toHere, reason: why.join(' · ') });
@@ -415,8 +441,9 @@ export function matchesTheme(place: Place, words: string[]): boolean {
  * 실제 데이터: 후기 10개 ≈ 91점, 1천 개 ≈ 130점, 1만 개 ≈ 150점. 후기 수가 없는 예시 데이터는 별점 × 20
  */
 export function popularityPoints(place: Place): number {
-  if (place.reviewCount === undefined) return place.rating * 20;
-  return 70 + Math.log10(place.reviewCount + 1) * 20;
+  const reviews = trustedReviews(place);
+  if (reviews === undefined) return place.rating * 20;
+  return 70 + Math.log10(reviews + 1) * 20;
 }
 
 export function popularityLabel(place: Place): string {

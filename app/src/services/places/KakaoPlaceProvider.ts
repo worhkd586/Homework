@@ -2,6 +2,7 @@ import type { Place, PlaceCategory, Region } from '../../domain/types';
 import { ALL_REGIONS } from '../../domain/regions';
 import type { PlaceProvider } from './PlaceProvider';
 import { defaultStayMinutes } from './mockData';
+import { samePlaceFamily } from '../recommend/dateFit';
 
 /** 프록시(proxy/worker.js)가 돌려주는 카카오 장소 한 건 */
 export interface KakaoDoc {
@@ -53,13 +54,13 @@ const ASSUMED_HOURS: Record<PlaceCategory, [number, number]> = {
 const EXCLUDE: Partial<Record<PlaceCategory, RegExp>> = {
   culture: /화방|화랑|공예|학원|영화관|CGV|롯데시네마|메가박스|교육|사무소|협회/,
   cafe: /만화카페|스터디카페|키즈카페|PC방|보드카페|룸카페|무인/,
-  activity: /학원|재료|도매|자동차|정비|부동산|교습/,
+  activity: /학원|재료|도매|자동차|정비|부동산|교습|화랑|화방|즉석사진|사진관/,
   walk: /명예도로|상점가|푸드트럭|먹자골목|주차장/,
   shop: /인테리어|가구|철물|도매|부동산|공구|자재|생활용품|마트|슈퍼|다이소|약국/,
 };
 
 /** 어느 종류든 데이트 코스로는 안 맞는 곳 (주차장, 아이용 시설 등) */
-const EXCLUDE_ALL = /주차장|화장실|매표소|어린이|키즈|유아|근린공원|소공원|놀이터|수영장|눈썰매|물놀이|체육센터|체육관|문화센터|주민센터|복지관/;
+const EXCLUDE_ALL = /주차장|화장실|매표소|어린이|키즈|유아|근린공원|소공원|놀이터|수영장|눈썰매|물놀이|체육센터|체육관|문화센터|주민센터|복지관|청년|상담|마음센터|센터 \d|놀숲|벌툰|캣툰|만화/;
 
 /** 후기가 이보다 적으면 (같은 종류에 다른 후보가 충분할 때) 뺀다 */
 const MIN_REVIEWS = 10;
@@ -67,6 +68,8 @@ const MIN_REVIEWS = 10;
 /** 카카오 분류 → 앱의 장소 종류 */
 export function categoryOf(doc: KakaoDoc, hint?: PlaceCategory): PlaceCategory {
   const name = doc.category_name;
+  // '○○카페거리'·'○○길'은 가게가 아니라 걸어 다니는 거리다
+  if (/(거리|골목|단길)$/.test(doc.place_name.trim()) && !['FD6', 'CE7'].includes(doc.category_group_code)) return 'walk';
   if (/술집|와인|칵테일|바$|호프|이자카야|포장마차/.test(name)) return 'bar';
   // '방탈출카페'·'보드카페'는 카카오에서 카페로도 분류되지만 앱에서는 놀거리다
   if (/방탈출|보드카페|보드게임|VR/.test(`${name} ${doc.place_name}`)) return 'activity';
@@ -194,7 +197,25 @@ export class KakaoPlaceProvider implements PlaceProvider {
     const ok = lists.filter((l): l is PromiseFulfilledResult<Place[]> => l.status === 'fulfilled');
     if (!ok.length) throw (lists[0] as PromiseRejectedResult).reason;
     const seen = new Set<string>();
-    return curate(ok.flatMap((l) => l.value).filter((p) => !seen.has(p.id) && seen.add(p.id)));
+    const base = curate(ok.flatMap((l) => l.value).filter((p) => !seen.has(p.id) && seen.add(p.id)));
+    return withPicks(base, await this.findPicks(region));
+  }
+
+  /** 동네별 데이트 명소를 이름으로 찾는다 (못 찾거나 실패하면 빼고) */
+  private async findPicks(region: Region): Promise<Place[]> {
+    const max = (region.radius ?? 1500) * 2.5;
+    const found = await Promise.allSettled(
+      (region.picks ?? []).map(async (name) => {
+        const docs = await this.get('/search', { q: name, x: String(region.center.lng), y: String(region.center.lat) });
+        const want = squash(name);
+        const doc = docs.find((d) => {
+          const got = squash(d.place_name);
+          return (got.includes(want) || want.includes(got)) && meters({ lat: Number(d.y), lng: Number(d.x) }, region.center) <= max;
+        });
+        return doc ? { ...toPlace(doc, region.id, 0), pick: true } : undefined;
+      }),
+    );
+    return found.flatMap((r) => (r.status === 'fulfilled' && r.value ? [r.value] : []));
   }
 
   async searchPlaces(query: string, regionId?: string): Promise<Place[]> {
@@ -266,6 +287,30 @@ interface PhotoResult {
 function sources(r: PhotoResult | undefined): string[] {
   if (!r) return [];
   return r.large ? [r.large, r.url] : [r.url];
+}
+
+const squash = (s: string) => s.replace(/\s+/g, '').toLowerCase();
+
+/** 명소를 후보에 더한다. 이미 있는 곳이면 그 자리에 표시만 (후기 수는 그대로 쓴다) */
+export function withPicks(base: Place[], picks: Place[]): Place[] {
+  const byId = new Map(picks.map((p) => [p.id, p]));
+  const out = base.map((p) => (byId.has(p.id) ? { ...p, pick: true } : p));
+  const have = new Set(base.map((p) => p.id));
+  return oneOfEachFamily([...out, ...picks.filter((p) => !have.has(p.id) && have.add(p.id))]);
+}
+
+/**
+ * 같은 곳의 일부·지점은 하나만 남긴다 (예: '롯데월드 어드벤처'와 그 안의 '롯데월드 월드모노레일',
+ * '지구별방탈출 ○○점'들). 명소로 고른 곳 → 후기 많은 곳 순으로 남긴다. 종류가 다르면 따로 본다.
+ */
+export function oneOfEachFamily(places: Place[]): Place[] {
+  const rank = (p: Place) => (p.pick ? 1e9 : 0) + (p.reviewCount ?? 0);
+  const kept: Place[] = [];
+  for (const p of [...places].sort((a, b) => rank(b) - rank(a))) {
+    if (!kept.some((k) => k.category === p.category && samePlaceFamily(k, p))) kept.push(p);
+  }
+  const keep = new Set(kept.map((p) => p.id));
+  return places.filter((p) => keep.has(p.id));
 }
 
 function meters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {

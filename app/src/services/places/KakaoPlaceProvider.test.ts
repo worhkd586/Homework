@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FallbackPlaceProvider, KakaoPlaceProvider, categoryOf, type KakaoDoc } from './KakaoPlaceProvider';
+import { ALL_REGIONS } from '../../domain/regions';
 import { MockPlaceProvider } from './MockPlaceProvider';
 import { StraightLineRouteProvider } from './StraightLineRouteProvider';
 import { RuleBasedRecommender } from '../recommend/RuleBasedRecommender';
@@ -33,7 +34,9 @@ describe('KakaoPlaceProvider', () => {
   it('turns Kakao results into places with kinds, links and assumed hours', async () => {
     const provider = new KakaoPlaceProvider('https://proxy.test/', undefined, fakeProxy());
     const places = await provider.listPlaces('seongsu');
-    expect(places).toHaveLength(10);
+    // 종류별 10곳 + 동네 명소(이름 검색) 1곳 (가짜 검색은 늘 같은 곳을 돌려줘서 하나로 합쳐진다)
+    expect(places).toHaveLength(11);
+    expect(places.filter((p) => p.pick)).toHaveLength(1);
     const wine = places.find((p) => p.name === '와인 한잔')!;
     expect(wine.category).toBe('bar');
     expect(wine.url).toBe('http://place.map.kakao.com/b1');
@@ -47,7 +50,8 @@ describe('KakaoPlaceProvider', () => {
     const provider = new KakaoPlaceProvider('https://proxy.test', undefined, f);
     await provider.listPlaces('seongsu');
     await provider.listPlaces('seongsu');
-    expect((f as unknown as { mock: { calls: unknown[] } }).mock.calls).toHaveLength(8);
+    const picks = ALL_REGIONS.find((r) => r.id === 'seongsu')!.picks!.length;
+    expect((f as unknown as { mock: { calls: unknown[] } }).mock.calls).toHaveLength(8 + picks);
   });
 
   it('builds a full course from real-shaped data', async () => {
@@ -140,5 +144,12 @@ describe('popularity, relevance and photos', () => {
     });
     expect(course.stops[0].place.name).toBe('국립중앙박물관');
     expect(course.stops.some((s) => /화방|CGV/.test(s.place.name))).toBe(false);
+  });
+});
+
+describe('categoryOf: 거리는 가게가 아니다', () => {
+  it('treats a cafe street as a walk, not a cafe', () => {
+    expect(categoryOf(doc('x', '성수동카페거리', '여행 > 관광,명소 > 테마거리 > 카페거리', 'AT4'))).toBe('walk');
+    expect(categoryOf(doc('y', '어니언 성수', '음식점 > 카페', 'CE7'))).toBe('cafe');
   });
 });
