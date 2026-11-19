@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import Text from './Text';
 import PlacePhoto from './PlacePhoto';
-import { colors } from './theme';
+import { colors, radius } from './theme';
 import type { Course, Place, PlaceCategory } from '../domain/types';
 import { CATEGORY_EMOJI, CATEGORY_LABEL } from '../domain/timeSlots';
 import type { StopSuggestion } from '../services/recommend/CourseRecommender';
@@ -157,14 +157,14 @@ export default function PlaceSuggestionList({ course, index, mode, onPick, onClo
 
 const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  button: { flex: 1, minHeight: 44, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: colors.card },
+  button: { flex: 1, minHeight: 44, justifyContent: 'center', alignItems: 'center', borderRadius: radius.pill, backgroundColor: colors.surface },
   primary: { backgroundColor: colors.accentStrong },
-  buttonText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  buttonText: { color: colors.onAccent, fontSize: 14, fontWeight: '700' },
   close: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   chip: { paddingHorizontal: 12, minHeight: 36, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: colors.line, marginRight: 6 },
-  chipOn: { backgroundColor: colors.text, borderColor: colors.text },
+  chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
   chipText: { color: colors.text, fontSize: 13 },
-  chipTextOn: { color: colors.bg, fontWeight: '700' },
+  chipTextOn: { color: colors.onAccent, fontWeight: '700' },
   searchRow: { marginTop: 10 },
   input: { borderWidth: 1, borderColor: colors.line, color: colors.text, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
   row: { flexDirection: 'row', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, alignItems: 'center' },

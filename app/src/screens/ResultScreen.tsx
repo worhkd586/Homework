@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Course, Place } from '../domain/types';
 import { CATEGORY_LABEL, formatDuration, formatMinute, getTimeSlot, isSlotRange } from '../domain/timeSlots';
 import { dataSourceNote, placeProvider, recommender } from '../lib/services';
-import { colors } from '../ui/theme';
+import { colors, radius, softShadow } from '../ui/theme';
 import PlacePhoto from '../ui/PlacePhoto';
 import PlaceSuggestionList from '../ui/PlaceSuggestionList';
 import { popularityLabel } from '../services/recommend/RuleBasedRecommender';
@@ -133,7 +133,7 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
               const on = stop.arriveMinute === m;
               return (
                 <Pressable key={m} style={[styles.chip, on && styles.chipOn]} onPress={() => run(() => recommender.setStopTime(course, index, m))}>
-                  <Text style={[styles.text, on && { color: colors.bg, fontWeight: '700' }]}>{formatMinute(m)}</Text>
+                  <Text style={[styles.text, on && { color: colors.onAccent, fontWeight: '700' }]}>{formatMinute(m)}</Text>
                 </Pressable>
               );
             })}
@@ -298,27 +298,27 @@ const styles = StyleSheet.create({
   backIcon: { color: colors.text, fontSize: 30, lineHeight: 34 },
   headerTitle: { color: colors.text, fontSize: 20, fontWeight: '800' },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  metaPill: { color: colors.muted, fontSize: 13, backgroundColor: colors.card, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, overflow: 'hidden' },
+  metaPill: { color: colors.text, fontSize: 13, backgroundColor: colors.card, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, overflow: 'hidden' },
   titleRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 14 },
   count: { color: colors.accent, fontSize: 15, fontWeight: '700', marginBottom: 4 },
   tabs: { flexDirection: 'row', gap: 8, marginTop: 16 },
-  tab: { flex: 1, minHeight: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent' },
-  tabOn: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  tab: { flex: 1, minHeight: 44, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card },
+  tabOn: { backgroundColor: colors.accent, ...softShadow, shadowOpacity: 0.25 },
   tabText: { color: colors.muted, fontSize: 15, fontWeight: '700' },
-  tabTextOn: { color: colors.text },
-  summary: { marginTop: 14, padding: 14, borderRadius: 14, backgroundColor: colors.card },
+  tabTextOn: { color: colors.onAccent },
+  summary: { marginTop: 14, padding: 18, borderRadius: radius.card, backgroundColor: colors.card, ...softShadow },
   summaryTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent, marginTop: 8, marginRight: 4 },
   tagRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  tag: { color: colors.text, fontSize: 12, fontWeight: '700', backgroundColor: colors.accentStrong, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, overflow: 'hidden' },
-  remove: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#26262f', alignItems: 'center', justifyContent: 'center' },
+  tag: { color: colors.onPink, fontSize: 12, fontWeight: '700', backgroundColor: colors.pink, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, overflow: 'hidden' },
+  remove: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   removeText: { color: colors.muted, fontSize: 14 },
   legRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginLeft: 64, marginVertical: 8, gap: 8 },
-  legPill: { flexShrink: 1, color: colors.muted, fontSize: 13, backgroundColor: colors.card, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, overflow: 'hidden' },
-  addRound: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#26262f', alignItems: 'center', justifyContent: 'center', marginLeft: 'auto' },
-  addRoundText: { color: colors.text, fontSize: 20, fontWeight: '700' },
+  legPill: { flexShrink: 1, color: colors.accent, fontSize: 13, backgroundColor: colors.accentSoft, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, overflow: 'hidden' },
+  addRound: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center', marginLeft: 'auto' },
+  addRoundText: { color: colors.accent, fontSize: 20, fontWeight: '700' },
   footerRow: { flexDirection: 'row', gap: 10 },
-  secondary: { paddingHorizontal: 18, borderRadius: 14, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  secondary: { paddingHorizontal: 22, borderRadius: radius.pill, backgroundColor: colors.card, ...softShadow, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   secondaryText: { color: colors.text, fontSize: 15, fontWeight: '700' },
   title: { color: colors.text, fontSize: 26, fontWeight: '900', letterSpacing: -1, marginTop: 4 },
   note: { color: colors.ok, fontSize: 13, marginTop: 6 },
@@ -330,27 +330,27 @@ const styles = StyleSheet.create({
   stop: { flexDirection: 'row', gap: 12 },
   time: { width: 52, alignItems: 'flex-end', paddingTop: 14 },
   timeMain: { color: colors.text, fontSize: 17, fontWeight: '700' },
-  card: { flex: 1, padding: 12, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent' },
+  card: { flex: 1, padding: 12, borderRadius: radius.card, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent', ...softShadow },
   cardOn: { borderColor: colors.accent },
   cardHead: { flexDirection: 'row', gap: 10 },
   name: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  badge: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, overflow: 'hidden', backgroundColor: colors.accentSoft, color: '#ff9aac', fontSize: 13 },
-  reason: { color: '#cfcfd6', fontSize: 13, marginTop: 8 },
+  badge: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, overflow: 'hidden', backgroundColor: colors.accentSoft, color: colors.accent, fontSize: 13 },
+  reason: { color: colors.muted, fontSize: 13, marginTop: 8 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
-  action: { flexGrow: 1, flexBasis: '45%', minHeight: 44, justifyContent: 'center', borderRadius: 10, alignItems: 'center', backgroundColor: '#26262f' },
+  action: { flexGrow: 1, flexBasis: '45%', minHeight: 44, justifyContent: 'center', borderRadius: 10, alignItems: 'center', backgroundColor: colors.surface },
   actionText: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  chip: { paddingHorizontal: 14, minHeight: 44, justifyContent: 'center', borderRadius: 999, backgroundColor: '#26262f', borderWidth: 1, borderColor: colors.line, marginRight: 8 },
-  chipOn: { backgroundColor: colors.text, borderColor: colors.text },
+  chip: { paddingHorizontal: 14, minHeight: 44, justifyContent: 'center', borderRadius: 999, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, marginRight: 8 },
+  chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
   panel: { marginLeft: 64, marginVertical: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.accentSoft },
   choices: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  choice: { flex: 1, minHeight: 44, justifyContent: 'center', borderRadius: 10, alignItems: 'center', backgroundColor: '#26262f' },
+  choice: { flex: 1, minHeight: 44, justifyContent: 'center', borderRadius: 10, alignItems: 'center', backgroundColor: colors.surface },
   choicePrimary: { backgroundColor: colors.accentStrong },
   choiceOn: { borderWidth: 1, borderColor: colors.text },
   choiceText: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  input: { backgroundColor: '#26262f', color: colors.text, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginBottom: 6 },
+  input: { backgroundColor: colors.surface, color: colors.text, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginBottom: 6 },
   placeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   footer: { paddingHorizontal: 20, paddingTop: 10, backgroundColor: colors.bg },
-  button: { backgroundColor: colors.accentStrong, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 8 },
-  buttonText: { color: '#fff', fontSize: 17, fontWeight: '800' },
+  button: { backgroundColor: colors.accentStrong, borderRadius: radius.pill, ...softShadow, shadowOpacity: 0.25, paddingVertical: 16, alignItems: 'center', marginBottom: 8 },
+  buttonText: { color: colors.onAccent, fontSize: 17, fontWeight: '800' },
   savedNote: { color: colors.ok, fontSize: 14, textAlign: 'center', paddingVertical: 14 },
 });

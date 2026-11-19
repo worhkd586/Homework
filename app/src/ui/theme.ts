@@ -1,14 +1,34 @@
+/** 라벤더 구름 (Stitch 시안 B): 밝은 연보라 배경, 흰 구름 카드, 라일락 포인트 */
 export const colors = {
-  bg: '#0b0b0f',
-  card: '#1a1a21',
-  line: '#2e2e38',
-  text: '#f4f4f6',
-  muted: '#a3a3ad',
-  accent: '#ff3b5c',
-  /** 흰 글씨를 올리는 채워진 버튼용 (흰 글씨 대비 4.5:1 이상). 빨간 글씨에는 accent */
-  accentStrong: '#e02a4b',
-  accentSoft: 'rgba(255, 59, 92, 0.16)',
-  warn: '#ffc24b',
-  warnSoft: 'rgba(255, 194, 75, 0.12)',
-  ok: '#3ddc97',
+  bg: '#f6f3ff',
+  card: '#ffffff',
+  /** 카드 안의 옅은 칸 (버튼, 입력칸, 사진 자리) */
+  surface: '#f1ebff',
+  line: '#e6deff',
+  text: '#1c1639',
+  muted: '#6b6680',
+  /** 라일락: 글씨·테두리·채운 버튼 모두 (흰 글씨 대비 6.9:1) */
+  accent: '#5949c0',
+  accentStrong: '#5949c0',
+  accentSoft: '#ebe6ff',
+  onAccent: '#ffffff',
+  disabled: '#c9c2e6',
+  mint: '#d5f7ee',
+  onMint: '#00594c',
+  pink: '#ffe3ef',
+  onPink: '#844965',
+  warn: '#8a5a00',
+  warnSoft: '#fff4dc',
+  ok: '#00705e',
+};
+
+export const radius = { card: 22, tile: 20, pill: 999 };
+
+/** 구름처럼 떠 있는 부드러운 그림자 */
+export const softShadow = {
+  shadowColor: '#5949c0',
+  shadowOpacity: 0.08,
+  shadowRadius: 16,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 2,
 };

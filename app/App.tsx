@@ -68,7 +68,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       {/* 선택 화면은 숨겨만 둬서, 돌아왔을 때 고른 값이 그대로 남아 있게 한다 */}
       <View style={{ flex: 1, display: showResult ? 'none' : 'flex' }}>
         <SetupScreen

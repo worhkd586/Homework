@@ -9,7 +9,7 @@ import type { SavedCourse } from '../lib/savedCourses';
 import { ACTIVITY_EXAMPLES, parseActivity, type Activity } from '../domain/activities';
 import { CATEGORY_EMOJI, CATEGORY_LABEL, MIN_RANGE, RANGE_FIRST, RANGE_LAST, TIME_SLOTS, formatDuration, formatMinute, isSlotRange, slotForRange } from '../domain/timeSlots';
 import { placeProvider, recommender } from '../lib/services';
-import { colors } from '../ui/theme';
+import { colors, radius, softShadow } from '../ui/theme';
 import PlacePhoto from '../ui/PlacePhoto';
 import { popularityLabel } from '../services/recommend/RuleBasedRecommender';
 
@@ -263,7 +263,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
         <View style={[styles.row, { marginBottom: 10 }]}>
           {(['서울', '경기'] as const).map((g) => (
             <Pressable key={g} style={[styles.groupTab, group === g && styles.groupTabOn]} onPress={() => setGroup(g)}>
-              <Text style={[styles.groupTabText, group === g && { color: colors.bg }]}>{g}</Text>
+              <Text style={[styles.groupTabText, group === g && { color: colors.onAccent }]}>{g}</Text>
             </Pressable>
           ))}
         </View>
@@ -330,7 +330,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
                         onPress={() => pickTime(m)}
                         accessibilityLabel={`${clock(m)} 선택`}
                       >
-                        <Text style={[styles.timeCellText, edge && { color: colors.bg, fontWeight: '700' }]}>{clock(m)}</Text>
+                        <Text style={[styles.timeCellText, edge && { color: colors.onAccent, fontWeight: '700' }]}>{clock(m)}</Text>
                       </Pressable>
                     );
                   })}
@@ -400,7 +400,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
                 value={mustGo.fixedMinute !== undefined}
                 onValueChange={(on) => setMustGo({ place: mustGo.place, fixedMinute: on ? timeOptions[Math.min(4, timeOptions.length - 1)] : undefined })}
                 trackColor={{ true: colors.accent, false: colors.line }}
-                thumbColor="#ffffff"
+                thumbColor={colors.onAccent}
               />
             </View>
             {mustGo.fixedMinute !== undefined && (
@@ -448,7 +448,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
       <SafeAreaView edges={['bottom']} style={styles.footer}>
         <Pressable style={[styles.button, !ready && styles.buttonOff]} disabled={!ready} onPress={makeCourses}>
           {loading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={colors.onAccent} />
           ) : (
             <Text style={styles.buttonText}>{!regionId ? '지역을 골라 주세요' : pickingEnd ? '끝 시간을 골라 주세요' : '✨ 코스 3개 추천받기'}</Text>
           )}
@@ -461,62 +461,54 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, paddingBottom: 40 },
-  brand: { fontSize: 15, fontWeight: '700', color: colors.accent },
-  title: { fontSize: 28, fontWeight: '900', color: colors.text, letterSpacing: -1, marginTop: 6 },
+  brand: { alignSelf: 'flex-start', fontSize: 13, fontWeight: '700', color: colors.accent, backgroundColor: colors.accentSoft, paddingHorizontal: 12, paddingVertical: 5, borderRadius: radius.pill, overflow: 'hidden' },
+  title: { fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.5, marginTop: 10 },
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 28, marginBottom: 12 },
   h2InRow: { marginTop: 0, marginBottom: 0 },
-  moodCard: { width: '48%', flexGrow: 1, height: 72, borderRadius: 12, overflow: 'hidden', borderWidth: 2, borderColor: colors.line },
-  moodCardOn: { borderColor: colors.accent },
-  moodImage: { flex: 1, justifyContent: 'center', paddingHorizontal: 14 },
-  moodImageInner: { borderRadius: 10 },
-  moodShade: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 11, 15, 0.55)' },
-  moodLabel: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  check: { position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11, backgroundColor: colors.accentStrong, alignItems: 'center', justifyContent: 'center' },
-  checkText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   chipText: { color: colors.text, fontSize: 14 },
-  moreLink: { color: colors.muted, fontSize: 14, fontWeight: '700' },
+  moreLink: { color: colors.accent, fontSize: 14, fontWeight: '700' },
   linkButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
-  link: { color: colors.muted, fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' },
+  link: { color: colors.accent, fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' },
   h2: { fontSize: 19, fontWeight: '700', color: colors.text, marginTop: 28, marginBottom: 12 },
   text: { color: colors.text, fontSize: 15 },
   muted: { color: colors.muted, fontSize: 15, marginTop: 4 },
   small: { color: colors.muted, fontSize: 13, marginTop: 2 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  tile: { width: '48%', flexGrow: 1, padding: 14, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent' },
+  tile: { width: '48%', flexGrow: 1, padding: 16, borderRadius: radius.tile, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent', ...softShadow },
   tileTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  selected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  selected: { borderColor: colors.accent, backgroundColor: colors.accentSoft, shadowOpacity: 0 },
   row: { flexDirection: 'row', gap: 8 },
   rangeText: { color: colors.text, fontSize: 17, fontWeight: '700' },
   timeGrid: { gap: 6, marginTop: 10 },
   timeRow: { flexDirection: 'row', gap: 6 },
-  timeCell: { flex: 1, minHeight: 44, justifyContent: 'center', borderRadius: 8, alignItems: 'center', backgroundColor: colors.card },
+  timeCell: { flex: 1, minHeight: 44, justifyContent: 'center', borderRadius: 14, alignItems: 'center', backgroundColor: colors.card },
   timeCellEmpty: { flex: 1 },
   timeCellIn: { backgroundColor: colors.accentSoft },
   timeCellEdge: { backgroundColor: colors.accent },
   timeCellText: { color: colors.text, fontSize: 14 },
   more: { minHeight: 44, justifyContent: 'center', alignItems: 'center', marginTop: 4 },
   moreText: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  groupTab: { paddingHorizontal: 20, minHeight: 44, justifyContent: 'center', borderRadius: 999, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
-  groupTabOn: { backgroundColor: colors.text, borderColor: colors.text },
+  groupTab: { paddingHorizontal: 24, minHeight: 44, justifyContent: 'center', borderRadius: radius.pill, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
+  groupTabOn: { backgroundColor: colors.accent, borderColor: colors.accent },
   groupTabText: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  slot: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent' },
+  slot: { flex: 1, alignItems: 'center', paddingVertical: 14, borderRadius: radius.tile, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent', ...softShadow },
   slotEmoji: { fontSize: 22 },
-  card: { padding: 14, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent' },
+  card: { padding: 16, borderRadius: radius.card, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent' },
   between: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
-  chip: { paddingHorizontal: 14, minHeight: 44, justifyContent: 'center', borderRadius: 999, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, marginRight: 8 },
-  chipOn: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
-  input: { backgroundColor: colors.card, color: colors.text, borderRadius: 12, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginBottom: 8 },
+  chip: { paddingHorizontal: 16, minHeight: 44, justifyContent: 'center', borderRadius: radius.pill, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, marginRight: 8 },
+  chipOn: { backgroundColor: colors.pink, borderColor: colors.pink },
+  input: { backgroundColor: colors.card, color: colors.text, borderRadius: radius.pill, paddingLeft: 18, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginBottom: 8 },
   placeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   resume: { marginTop: 16, borderColor: colors.line },
-  savedRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 12, backgroundColor: colors.card, marginBottom: 8 },
+  savedRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16, borderRadius: radius.card, backgroundColor: colors.card, marginBottom: 10, ...softShadow },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chipOnText: { color: colors.text, fontWeight: '700' },
+  chipOnText: { color: colors.onPink, fontWeight: '700' },
   wishRow: { flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'center' },
-  wishButton: { backgroundColor: colors.line, borderRadius: 12, paddingHorizontal: 18, minHeight: 44, justifyContent: 'center' },
+  wishButton: { backgroundColor: colors.accent, borderRadius: radius.pill, paddingHorizontal: 20, minHeight: 44, justifyContent: 'center' },
   wishButtonOff: { opacity: 0.5 },
-  buttonTextSmall: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  buttonTextSmall: { color: colors.onAccent, fontSize: 15, fontWeight: '800' },
   footer: { paddingHorizontal: 20, paddingTop: 10, backgroundColor: colors.bg },
-  button: { backgroundColor: colors.accentStrong, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 8 },
-  buttonOff: { backgroundColor: '#3a3a44' },
-  buttonText: { color: '#fff', fontSize: 17, fontWeight: '800' },
+  button: { backgroundColor: colors.accentStrong, borderRadius: radius.pill, ...softShadow, shadowOpacity: 0.25, paddingVertical: 16, alignItems: 'center', marginBottom: 8 },
+  buttonOff: { backgroundColor: colors.disabled },
+  buttonText: { color: colors.onAccent, fontSize: 17, fontWeight: '800' },
 });

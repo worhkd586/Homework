@@ -1,3 +1,4 @@
+import { colors } from './theme';
 import { useEffect, useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import Text from './Text';
@@ -32,6 +33,6 @@ export default function PlacePhoto({ place, size = 64 }: { place: Place; size?: 
 }
 
 const styles = StyleSheet.create({
-  box: { backgroundColor: '#26262f', overflow: 'hidden' },
+  box: { backgroundColor: colors.surface, overflow: 'hidden' },
   empty: { alignItems: 'center', justifyContent: 'center' },
 });
