@@ -307,7 +307,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
               accessibilityState={{ selected: regionId === r.id }}
               accessibilityLabel={`${r.name}, ${r.tagline}`}
             >
-              <Photo style={styles.regionPhoto} loadKey={r.id} load={() => placeProvider.photoFor?.(`${r.name.split('·')[0]} 데이트`, r.name.split('·')[0]) ?? Promise.resolve(undefined)}>
+              <Photo style={styles.regionPhoto} loadKey={r.id} load={() => placeProvider.photosFor?.(`${r.name.split('·')[0]} 데이트`, r.name.split('·')[0]) ?? Promise.resolve(undefined)}>
                 <Text style={styles.regionName}>{r.name}</Text>
                 <Text style={styles.regionTag} numberOfLines={1}>
                   {r.tagline}

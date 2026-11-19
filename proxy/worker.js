@@ -3,7 +3,8 @@
  *
  * - 카카오 REST API 키는 앱이 아니라 여기(Worker의 비밀값 KAKAO_REST_KEY)에만 둔다.
  * - 앱은 정해진 모양의 요청만 보낼 수 있다:
- *   /places (종류별 주변 장소 + 블로그 후기 수), /search (이름 검색), /photo (장소 사진 한 장)
+ *   /places (종류별 주변 장소 + 블로그 후기 수), /search (이름 검색), /photo (장소 사진 한 장),
+ *   /img (/photo가 고른 원본 사진을 대신 받아 줌)
  * - 같은 요청은 캐시해서 카카오 무료 쿼터를 아낀다 (장소 하루, 사진 일주일).
  * - 무료 플랜은 요청 하나당 바깥 호출이 50번까지라서, 후기 수는 한 번에 최대 MAX_REVIEW_LOOKUPS곳만 센다.
  */
@@ -48,6 +49,38 @@ function coord(url) {
   const y = Number(url.searchParams.get('y'));
   if (!(x >= 124 && x <= 132 && y >= 33 && y <= 39)) return null;
   return { x: x.toFixed(5), y: y.toFixed(5) };
+}
+
+const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+
+/** /img가 받아 줄 주소: http(s)이고, 내부망·IP 주소가 아닌 공개 도메인만 */
+export function safeImageUrl(raw) {
+  if (!raw || raw.length > 1000) return null;
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+  if (u.username || u.password || u.port) return null;
+  const host = u.hostname;
+  if (!host.includes('.') || /^[\d.]+$/.test(host) || host.includes(':') || /(^|\.)localhost$|\.local$|\.internal$/.test(host)) return null;
+  return u.toString();
+}
+
+/** 블로그 주소 비교용 (m.blog / blog, http / https, 끝의 / 차이 무시) */
+export function samePost(a, b) {
+  const norm = (x) => String(x ?? '').replace(/^https?:\/\//, '').replace(/^m\./, '').replace(/\/$/, '');
+  return !!a && !!b && norm(a) === norm(b);
+}
+
+/** 그 글에서 나온 가로 400px 이상 원본 사진 */
+export async function findOriginal(env, query, postUrl) {
+  const data = await kakaoGet(env, `${DAUM}/image?${new URLSearchParams({ query, size: '30', sort: 'accuracy' })}`);
+  const docs = (data.documents ?? []).filter((d) => samePost(d.doc_url, postUrl) && /^https?:\/\//.test(d.image_url ?? ''));
+  const best = docs.find((d) => (d.width ?? 0) >= 400) ?? null;
+  return best?.image_url ?? null;
 }
 
 /** 비교용: 공백·기호·괄호를 빼고 소문자로 */
@@ -164,7 +197,23 @@ async function handle(url, env) {
     // 글의 대표 사진만 쓰고, 그런 글이 없으면 사진을 주지 않는다 (앱은 종류별 기본 그림을 보여 준다)
     const name = (url.searchParams.get('name') ?? q.split(' ').slice(0, -1).join(' ') ?? q).trim() || q;
     const doc = await findPhoto(env, q, name);
-    return json({ url: doc?.thumbnail ?? null, source: doc?.url ?? null }, 200, { 'Cache-Control': `public, max-age=${DAY * 7}` });
+    // 고화질: 같은 글에서 나온 원본 사진을 이미지 검색에서 찾아 /img로 대신 받아 준다
+    const original = doc ? await findOriginal(env, q, doc.url) : null;
+    const large = original ? `${url.origin}/img?u=${encodeURIComponent(original)}` : null;
+    return json({ url: doc?.thumbnail ?? null, large, source: doc?.url ?? null }, 200, { 'Cache-Control': `public, max-age=${DAY * 7}` });
+  }
+  if (url.pathname === '/img') {
+    // 블로그 원본 사진은 다른 앱에서 바로 열면 막히는 경우가 많아서 Worker가 대신 받아 준다
+    const target = safeImageUrl(url.searchParams.get('u'));
+    if (!target) return json({ error: 'bad request' }, 400);
+    const res = await fetch(target, { headers: { Accept: 'image/*', 'User-Agent': 'Mozilla/5.0 (date-course-proxy)' } });
+    const type = res.headers.get('Content-Type') ?? '';
+    const size = Number(res.headers.get('Content-Length') ?? '0');
+    if (!res.ok || !type.startsWith('image/') || size > MAX_IMAGE_BYTES) return json({ error: 'image unavailable' }, 404);
+    return new Response(res.body, {
+      status: 200,
+      headers: { 'Content-Type': type, 'Access-Control-Allow-Origin': '*', 'Cache-Control': `public, max-age=${DAY * 7}` },
+    });
   }
   return json({ error: 'not found' }, 404);
 }

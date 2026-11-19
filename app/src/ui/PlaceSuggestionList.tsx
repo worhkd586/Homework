@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import Text from './Text';
 import PlacePhoto from './PlacePhoto';
+import Photo from './Photo';
 import { colors, radius } from './theme';
 import type { Course, Place, PlaceCategory } from '../domain/types';
 import { CATEGORY_EMOJI, CATEGORY_LABEL } from '../domain/timeSlots';
@@ -33,6 +34,8 @@ export default function PlaceSuggestionList({ course, index, mode, onPick, onClo
   const [shown, setShown] = useState(PAGE);
   const [query, setQuery] = useState('');
   const [found, setFound] = useState<Place[] | null>(null);
+  /** 고른 곳을 바로 넣지 않고 먼저 구경하는 화면 */
+  const [preview, setPreview] = useState<{ place: Place; reason?: string } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -60,6 +63,37 @@ export default function PlaceSuggestionList({ course, index, mode, onPick, onClo
   async function searchKakao() {
     if (!query.trim()) return;
     setFound(await placeProvider.searchPlaces(query.trim(), course.request.regionId).catch(() => []));
+  }
+
+  if (preview) {
+    const p = preview.place;
+    const mapUrl = p.url ?? `https://map.kakao.com/link/search/${encodeURIComponent(p.name)}`;
+    return (
+      <View>
+        <Pressable onPress={() => setPreview(null)} hitSlop={8} style={styles.back} accessibilityLabel="목록으로">
+          <Text style={styles.backText}>‹ 목록으로</Text>
+        </Pressable>
+        <Photo
+          style={styles.previewPhoto}
+          loadKey={p.id}
+          load={() => placeProvider.photosOf?.(p) ?? Promise.resolve(undefined)}
+          emoji={CATEGORY_EMOJI[p.category]}
+          label={`${p.name} 사진`}
+        />
+        <Text style={styles.previewName}>{p.name}</Text>
+        <Text style={styles.previewMeta}>
+          {CATEGORY_LABEL[p.category]} · {popularityLabel(p)}
+        </Text>
+        {!!p.description && <Text style={styles.previewDesc}>{p.description}</Text>}
+        {!!preview.reason && preview.reason !== popularityLabel(p) && <Text style={styles.reason}>{preview.reason}</Text>}
+        <Pressable style={styles.mapLink} onPress={() => Linking.openURL(mapUrl)} accessibilityRole="link" accessibilityLabel="카카오맵에서 별점·후기 보기">
+          <Text style={styles.mapLinkText}>카카오맵에서 별점·후기 보기 ↗</Text>
+        </Pressable>
+        <Pressable style={[styles.confirm]} onPress={() => onPick(p)} accessibilityLabel={mode === 'replace' ? '이걸로 바꾸기' : '여기에 추가'}>
+          <Text style={styles.buttonText}>{mode === 'replace' ? '이걸로 바꾸기' : '여기에 추가'}</Text>
+        </Pressable>
+      </View>
+    );
   }
 
   return (
@@ -109,7 +143,7 @@ export default function PlaceSuggestionList({ course, index, mode, onPick, onClo
             {filtered.length ? `이 자리에 어울리는 순서예요 · ${filtered.length}곳` : '조건에 맞는 곳이 없어요. 종류를 바꾸거나 이름으로 찾아보세요.'}
           </Text>
           {filtered.slice(0, shown).map((s, i) => (
-            <Pressable key={s.place.id} style={styles.row} onPress={() => onPick(s.place)} accessibilityLabel={`${s.place.name} 고르기`}>
+            <Pressable key={s.place.id} style={styles.row} onPress={() => setPreview({ place: s.place, reason: s.reason })} accessibilityLabel={`${s.place.name} 자세히 보기`}>
               <PlacePhoto place={s.place} size={60} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.name} numberOfLines={1}>
@@ -136,7 +170,7 @@ export default function PlaceSuggestionList({ course, index, mode, onPick, onClo
             </Pressable>
           )}
           {found?.map((p) => (
-            <Pressable key={`found-${p.id}`} style={styles.row} onPress={() => onPick(p)} accessibilityLabel={`${p.name} 고르기`}>
+            <Pressable key={`found-${p.id}`} style={styles.row} onPress={() => setPreview({ place: p })} accessibilityLabel={`${p.name} 자세히 보기`}>
               <PlacePhoto place={p} size={60} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.name} numberOfLines={1}>
@@ -172,5 +206,14 @@ const styles = StyleSheet.create({
   small: { color: colors.muted, fontSize: 12, marginTop: 6 },
   reason: { color: colors.ok, fontSize: 12, marginTop: 3 },
   muted: { color: colors.muted, fontSize: 16 },
+  back: { minHeight: 40, justifyContent: 'center', alignSelf: 'flex-start' },
+  backText: { color: colors.text, fontSize: 14, fontWeight: '600' },
+  previewPhoto: { width: '100%', aspectRatio: 16 / 10, borderRadius: radius.card, marginTop: 4 },
+  previewName: { color: colors.text, fontSize: 20, fontWeight: '800', marginTop: 14 },
+  previewMeta: { color: colors.muted, fontSize: 13, marginTop: 4 },
+  previewDesc: { color: colors.text, fontSize: 14, marginTop: 10, lineHeight: 20 },
+  mapLink: { marginTop: 14, minHeight: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: 1, borderColor: colors.text },
+  mapLinkText: { color: colors.text, fontSize: 14, fontWeight: '700' },
+  confirm: { marginTop: 8, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: colors.accentStrong },
   more: { marginTop: 10, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: 1, borderColor: colors.line },
 });

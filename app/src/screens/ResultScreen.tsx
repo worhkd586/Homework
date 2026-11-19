@@ -223,7 +223,7 @@ export default function ResultScreen({ options, note, selected, isSaved, log, on
                     </Pressable>
                   </View>
                   <Pressable style={[styles.card, editing && styles.cardOn]} onPress={() => open({ kind: 'edit', index: i })} accessibilityLabel={`${s.place.name} 수정`}>
-                    <Photo style={styles.stopPhoto} loadKey={s.place.id} load={() => placeProvider.photoOf?.(s.place) ?? Promise.resolve(undefined)} emoji={CATEGORY_EMOJI[s.place.category]} label={`${s.place.name} 사진`} />
+                    <Photo style={styles.stopPhoto} loadKey={s.place.id} load={() => placeProvider.photosOf?.(s.place) ?? Promise.resolve(undefined)} emoji={CATEGORY_EMOJI[s.place.category]} label={`${s.place.name} 사진`} />
                     <View style={styles.cardBody}>
                       <Text style={styles.name} numberOfLines={2}>
                         {s.place.name}

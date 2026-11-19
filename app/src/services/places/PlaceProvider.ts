@@ -17,6 +17,9 @@ export interface PlaceProvider {
   photoOf?(place: Place): Promise<string | undefined>;
   /** 검색어로 찾은 대표 사진 주소 (동네 카드용, 실제 데이터만). name이 제목에 든 글의 사진만 쓴다 */
   photoFor?(query: string, name?: string): Promise<string | undefined>;
+  /** 큰 카드용 사진 주소들: 고화질 원본을 먼저, 안 열리면 다음 것 */
+  photosOf?(place: Place): Promise<string[]>;
+  photosFor?(query: string, name?: string): Promise<string[]>;
 }
 
 /**

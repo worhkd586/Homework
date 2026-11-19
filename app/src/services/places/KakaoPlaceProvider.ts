@@ -138,7 +138,7 @@ export class KakaoPlaceProvider implements PlaceProvider {
   private readonly cache = new Map<string, Promise<Place[]>>();
   /** 직접 입력한 주제로 검색해서 찾은 곳 (그 지역 후보에 더한다) */
   private readonly extras = new Map<string, Place[]>();
-  private readonly photos = new Map<string, Promise<string | undefined>>();
+  private readonly photos = new Map<string, Promise<PhotoResult | undefined>>();
 
   constructor(
     private readonly proxyUrl: string,
@@ -216,30 +216,53 @@ export class KakaoPlaceProvider implements PlaceProvider {
     return found;
   }
 
-  /** 장소 사진 한 장 (다음 이미지 검색 썸네일). 없거나 실패하면 undefined */
-  photoOf(place: Place): Promise<string | undefined> {
-    if (!place.id.startsWith('kakao-')) return Promise.resolve(undefined);
-    let task = this.photos.get(place.id);
-    if (!task) {
-      task = this.getJson<{ url?: string | null }>('/photo', { q: lookupName(place), name: place.name })
-        .then((r) => r.url ?? undefined)
-        .catch(() => undefined);
-      this.photos.set(place.id, task);
-    }
-    return task;
+  /** 장소 사진 한 장 (블로그 썸네일, 작은 목록용). 없거나 실패하면 undefined */
+  async photoOf(place: Place): Promise<string | undefined> {
+    return (await this.photoResult(place))?.url;
   }
 
-  photoFor(query: string, name?: string): Promise<string | undefined> {
-    const key = `q:${query}`;
+  /** 큰 카드용: 같은 글의 원본 사진(고화질) → 썸네일 순서 */
+  async photosOf(place: Place): Promise<string[]> {
+    return sources(await this.photoResult(place));
+  }
+
+  async photoFor(query: string, name?: string): Promise<string | undefined> {
+    return (await this.queryResult(query, name))?.url;
+  }
+
+  async photosFor(query: string, name?: string): Promise<string[]> {
+    return sources(await this.queryResult(query, name));
+  }
+
+  private photoResult(place: Place): Promise<PhotoResult | undefined> {
+    if (!place.id.startsWith('kakao-')) return Promise.resolve(undefined);
+    return this.cachedPhoto(place.id, { q: lookupName(place), name: place.name });
+  }
+
+  private queryResult(query: string, name?: string): Promise<PhotoResult | undefined> {
+    return this.cachedPhoto(`q:${query}`, name ? { q: query, name } : { q: query });
+  }
+
+  private cachedPhoto(key: string, params: Record<string, string>): Promise<PhotoResult | undefined> {
     let task = this.photos.get(key);
     if (!task) {
-      task = this.getJson<{ url?: string | null }>('/photo', name ? { q: query, name } : { q: query })
-        .then((r) => r.url ?? undefined)
+      task = this.getJson<{ url?: string | null; large?: string | null }>('/photo', params)
+        .then((r) => (r.url ? { url: r.url, large: r.large ?? undefined } : undefined))
         .catch(() => undefined);
       this.photos.set(key, task);
     }
     return task;
   }
+}
+
+interface PhotoResult {
+  url: string;
+  large?: string;
+}
+
+function sources(r: PhotoResult | undefined): string[] {
+  if (!r) return [];
+  return r.large ? [r.large, r.url] : [r.url];
 }
 
 function meters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
@@ -295,5 +318,11 @@ export class FallbackPlaceProvider implements PlaceProvider {
   }
   photoFor(query: string, name?: string): Promise<string | undefined> {
     return this.primary.photoFor?.(query, name) ?? Promise.resolve(undefined);
+  }
+  photosOf(place: Place): Promise<string[]> {
+    return this.primary.photosOf?.(place) ?? Promise.resolve([]);
+  }
+  photosFor(query: string, name?: string): Promise<string[]> {
+    return this.primary.photosFor?.(query, name) ?? Promise.resolve([]);
   }
 }

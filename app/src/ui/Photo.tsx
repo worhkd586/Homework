@@ -11,9 +11,18 @@ export function largerThumb(url: string): string {
   return url.replace(/\/argon\/\d+x\d+_\d+_c\//, '/argon/600x400_85_c/');
 }
 
+/** 각 주소 뒤에 (카카오 썸네일이면) 더 큰 썸네일을 끼워 넣고 중복을 뺀다 */
+function expand(list: string[]): string[] {
+  const out: string[] = [];
+  for (const u of list) {
+    for (const v of [largerThumb(u), u]) if (!out.includes(v)) out.push(v);
+  }
+  return out;
+}
+
 interface Props {
-  /** 사진 주소를 돌려주는 함수 (없거나 실패하면 placeholder) */
-  load: () => Promise<string | undefined>;
+  /** 사진 주소(들)를 돌려주는 함수. 여러 개면 앞에서부터 시도 (없거나 다 실패하면 placeholder) */
+  load: () => Promise<string | string[] | undefined>;
   /** 다시 불러야 하는 기준 (장소 id, 동네 id 등) */
   loadKey: string;
   style?: StyleProp<ViewStyle>;
@@ -35,8 +44,7 @@ export default function Photo({ load, loadKey, style, emoji, children, label }: 
     setIndex(0);
     load().then((u) => {
       if (!alive || !u) return;
-      const big = largerThumb(u);
-      setUris(big === u ? [u] : [big, u]);
+      setUris(expand(Array.isArray(u) ? u : [u]));
     });
     return () => {
       alive = false;

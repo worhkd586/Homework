@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { coreName, lookupName, MAX_REVIEW_LOOKUPS, squash } from './worker.js';
+import worker, { coreName, lookupName, MAX_REVIEW_LOOKUPS, safeImageUrl, samePost, squash } from './worker.js';
 
 const env = { KAKAO_REST_KEY: 'test-key' };
 const ctx = { waitUntil: () => {} };
@@ -77,6 +77,34 @@ describe('proxy', () => {
     const body = await (await call('/photo?q=' + encodeURIComponent('아키야마 성수본점 성수동2가') + '&name=' + encodeURIComponent('아키야마 성수본점'))).json();
     expect(body.url).toBe('https://search1.kakaocdn.net/right.jpg');
     expect(fetchMock.mock.calls[0][0]).toContain('/v2/search/blog');
+  });
+
+  it('adds a large original from the same post through /img', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (u) => new Response(JSON.stringify({ documents: String(u).includes('/blog') ? [
+      { title: '<b>아키야마</b> 후기', thumbnail: 'https://search1.kakaocdn.net/t.jpg', url: 'https://blog.naver.com/a/1' },
+    ] : [
+      { doc_url: 'https://blog.naver.com/b/9', image_url: 'https://other.example.com/x.jpg', width: 1200 },
+      { doc_url: 'http://m.blog.naver.com/a/1', image_url: 'https://blogfiles.example.com/small.jpg', width: 200 },
+      { doc_url: 'https://blog.naver.com/a/1/', image_url: 'https://blogfiles.example.com/big.jpg', width: 900 },
+    ] }))));
+    const body = await (await call('/photo?q=' + encodeURIComponent('아키야마 성수본점 성수동2가') + '&name=' + encodeURIComponent('아키야마 성수본점'))).json();
+    expect(body.url).toBe('https://search1.kakaocdn.net/t.jpg');
+    expect(body.large).toBe('https://proxy.test/img?u=' + encodeURIComponent('https://blogfiles.example.com/big.jpg'));
+  });
+
+  it('relays only public image URLs as images', async () => {
+    expect(samePost('http://m.blog.naver.com/a/1', 'https://blog.naver.com/a/1/')).toBe(true);
+    expect(safeImageUrl('https://postfiles.pstatic.net/a.jpg')).toBe('https://postfiles.pstatic.net/a.jpg');
+    for (const bad of ['ftp://x.com/a', 'http://127.0.0.1/a', 'http://localhost/a', 'http://intranet/a', 'https://a.internal/x', 'https://u:p@x.com/a', 'https://x.com:8443/a', null]) {
+      expect(safeImageUrl(bad)).toBeNull();
+    }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('img', { headers: { 'Content-Type': 'image/jpeg' } })));
+    const ok = await call('/img?u=' + encodeURIComponent('https://blog.example.com/big.jpg'));
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get('Content-Type')).toBe('image/jpeg');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>', { headers: { 'Content-Type': 'text/html' } })));
+    expect((await call('/img?u=' + encodeURIComponent('https://blog.example.com/page'))).status).toBe(404);
+    expect((await call('/img?u=' + encodeURIComponent('http://10.0.0.1/x'))).status).toBe(400);
   });
 
   it('gives no photo when no post title matches the place', async () => {
