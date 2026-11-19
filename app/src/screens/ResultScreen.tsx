@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Course, Place } from '../domain/types';
-import { CATEGORY_LABEL, formatMinute, getTimeSlot } from '../domain/timeSlots';
+import { CATEGORY_LABEL, formatDuration, formatMinute, getTimeSlot, isSlotRange } from '../domain/timeSlots';
 import { dataSourceNote, placeProvider, recommender } from '../lib/services';
 import { colors } from '../ui/theme';
 import PlacePhoto from '../ui/PlacePhoto';
@@ -168,7 +168,8 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
           <Text style={styles.back}>‹ 조건 바꾸기 · 내 코스</Text>
         </Pressable>
         <Text style={styles.eyebrow}>
-          {course.request.date} · {slot.emoji} {slot.label} {formatMinute(course.request.startMinute)}–{formatMinute(course.request.endMinute)}
+          {course.request.date} · {isSlotRange(slot, course.request.startMinute, course.request.endMinute) ? `${slot.emoji} ${slot.label} ` : '🕒 '}
+          {formatMinute(course.request.startMinute)}–{course.request.endMinute === 1440 ? '24:00' : formatMinute(course.request.endMinute)} ({formatDuration(course.request.endMinute - course.request.startMinute)})
         </Text>
         <Text style={styles.title}>{options.length > 1 ? '마음에 드는 코스를 골라요' : '내 코스'}</Text>
         {note && <Text style={styles.note}>{note}</Text>}

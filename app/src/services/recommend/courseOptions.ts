@@ -1,7 +1,8 @@
 import type { Course, CourseRequest, PlaceCategory, Region, TimeSlotId } from '../../domain/types';
 import { MOODS, getMood, withMeal, type CourseTemplate, type MoodId } from '../../domain/moods';
 import type { Activity } from '../../domain/activities';
-import { CATEGORY_LABEL } from '../../domain/timeSlots';
+import { CATEGORY_LABEL, TIME_SLOTS } from '../../domain/timeSlots';
+import { defaultStayMinutes } from '../places/mockData';
 import type { PlaceProvider } from '../places/PlaceProvider';
 import type { CourseRecommender } from './CourseRecommender';
 
@@ -68,6 +69,48 @@ export function shortlist(regions: Region[], moodId: MoodId | undefined, activit
 /** 기분을 안 골랐을 때 쓰는 기본 코스 3개 */
 const MIXED: CourseTemplate[] = [MOODS[0].templates[0], MOODS[1].templates[0], MOODS[2].templates[0]];
 
+/** 이보다 긴 범위면 흐름을 시간에 맞춰 다시 짠다 (기본 시간대는 3시간 반~5시간) */
+const LONG_RANGE = 5 * 60 + 30;
+
+/**
+ * 고른 시간이 길면(예: 12:00~22:00) 일정을 시간 순서에 맞춰 다시 짠다.
+ * - 점심(11:00~13:30)·저녁(17:30~19:30) 시각이 되면 식사를 넣고
+ * - 나머지는 원래 흐름 순서대로 쓰되, 술은 18시 이후, 전시는 17시 전에만
+ * - 원래 흐름을 다 쓰면 그 시각의 시간대 흐름에서 덜 쓴 종류로 채운다 (최대 7곳)
+ */
+export function fitFlowToRange(flow: PlaceCategory[], start: number, end: number): PlaceCategory[] {
+  if (end - start <= LONG_RANGE) return flow;
+  const queue = flow.filter((c) => c !== 'restaurant');
+  const out: PlaceCategory[] = [];
+  const fits = (c: PlaceCategory, clock: number) =>
+    c !== out[out.length - 1] && (c !== 'bar' || clock >= 18 * 60) && (c !== 'culture' || clock < 17 * 60);
+  let clock = start;
+  let lunch = false;
+  let dinner = false;
+  while (out.length < 7 && end - clock > 60) {
+    let next: PlaceCategory | undefined;
+    if (!lunch && clock >= 11 * 60 && clock <= 13 * 60 + 30) {
+      next = 'restaurant';
+      lunch = true;
+    } else if (!dinner && clock >= 17 * 60 + 30 && clock <= 19 * 60 + 30) {
+      next = 'restaurant';
+      dinner = true;
+    } else {
+      const i = queue.findIndex((c) => fits(c, clock));
+      if (i >= 0) next = queue.splice(i, 1)[0];
+      else {
+        const slot = TIME_SLOTS.find((t) => clock >= t.defaultStart && clock < t.defaultEnd) ?? TIME_SLOTS[TIME_SLOTS.length - 1];
+        const count = (c: PlaceCategory) => out.filter((x) => x === c).length;
+        next = slot.flow.filter((c) => c !== 'restaurant' && fits(c, clock)).sort((x, y) => count(x) - count(y))[0];
+      }
+    }
+    if (!next) break;
+    out.push(next);
+    clock += defaultStayMinutes(next) + 15;
+  }
+  return out.length ? out : flow;
+}
+
 /** 하고 싶은 것(활동)이 흐름에 없으면 넣는다: 식사·이미 원하는 것 말고 앞쪽 하나를 바꾸고, 없으면 덧붙인다 */
 export function ensureActivities(flow: PlaceCategory[], activities: Activity[]): PlaceCategory[] {
   const out = [...flow];
@@ -96,7 +139,7 @@ export async function recommendOptions(
   for (const template of mood?.templates ?? MIXED) {
     const request: CourseRequest = {
       ...base,
-      flow: ensureActivities(withMeal(template.flow, base.slotId as TimeSlotId), activities),
+      flow: fitFlowToRange(ensureActivities(withMeal(template.flow, base.slotId as TimeSlotId), activities), base.startMinute, base.endMinute),
       title: `${regionName} · ${template.name}`,
       preferences: mood?.preferences ?? [],
       keywords: activities.flatMap((a) => a.keywords),

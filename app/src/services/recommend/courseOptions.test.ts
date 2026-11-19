@@ -132,3 +132,41 @@ describe('activities (하고 싶은 것)', () => {
     expect(region.id).toBe('jamsil');
   });
 });
+
+describe('time range (언제 만나요 범위)', () => {
+  it('picks the matching slot for a custom range', async () => {
+    const { slotForRange } = await import('../../domain/timeSlots');
+    expect(slotForRange(11 * 60 + 30, 14 * 60).id).toBe('lunch');
+    expect(slotForRange(14 * 60, 19 * 60).id).toBe('afternoon');
+    expect(slotForRange(20 * 60, 24 * 60).id).toBe('night');
+  });
+
+  it('fills a long day (12:00–22:00) with more stops and two meals', async () => {
+    const options = await recommendOptions(
+      recommender,
+      { regionId: 'seongsu', slotId: 'afternoon', date: '2026-11-21', startMinute: 12 * 60, endMinute: 22 * 60, pins: [] },
+      'talk',
+      '성수',
+    );
+    for (const o of options) {
+      expect(o.stops.length).toBeGreaterThanOrEqual(5);
+      expect(o.stops[0].arriveMinute).toBeGreaterThanOrEqual(12 * 60);
+      expect(o.stops[o.stops.length - 1].leaveMinute).toBeLessThanOrEqual(22 * 60);
+      expect(o.stops.filter((s) => s.place.category === 'restaurant').length).toBeGreaterThanOrEqual(1);
+    }
+    expect(options.some((o) => o.stops.filter((s) => s.place.category === 'restaurant').length === 2)).toBe(true);
+  });
+
+  it('keeps a short range (2 hours) short', async () => {
+    const options = await recommendOptions(
+      recommender,
+      { regionId: 'hongdae', slotId: 'evening', date: '2026-11-21', startMinute: 19 * 60, endMinute: 21 * 60, pins: [] },
+      'food',
+      '홍대',
+    );
+    for (const o of options) {
+      expect(o.stops.length).toBeGreaterThanOrEqual(1);
+      expect(o.stops[o.stops.length - 1].leaveMinute).toBeLessThanOrEqual(21 * 60);
+    }
+  });
+});

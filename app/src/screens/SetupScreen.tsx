@@ -6,7 +6,7 @@ import { MOODS, type MoodId } from '../domain/moods';
 import { recommendOptions, suggestRegion } from '../services/recommend/courseOptions';
 import type { SavedCourse } from '../lib/savedCourses';
 import { ACTIVITY_EXAMPLES, parseActivity, type Activity } from '../domain/activities';
-import { CATEGORY_EMOJI, CATEGORY_LABEL, TIME_SLOTS, formatMinute, getTimeSlot } from '../domain/timeSlots';
+import { CATEGORY_EMOJI, CATEGORY_LABEL, MIN_RANGE, RANGE_FIRST, RANGE_LAST, TIME_SLOTS, formatDuration, formatMinute, isSlotRange, slotForRange } from '../domain/timeSlots';
 import { placeProvider, recommender } from '../lib/services';
 import { colors } from '../ui/theme';
 import PlacePhoto from '../ui/PlacePhoto';
@@ -19,6 +19,8 @@ export interface CourseOptions {
 }
 
 const AUTO = 'auto';
+/** 범위 끝의 자정은 00:00 대신 24:00으로 */
+const clock = (m: number) => (m === 24 * 60 ? '24:00' : formatMinute(m));
 
 /** 한 화면에서 끝나는 코스 만들기: 기분 → 지역(추천 가능) → 시간대 → (선택) 꼭 갈 곳 → 코스 3개 보기 */
 interface Props {
@@ -38,7 +40,10 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
   const [regions, setRegions] = useState<Region[]>([]);
   const [regionId, setRegionId] = useState<string>();
   const [group, setGroup] = useState<'서울' | '경기'>('서울');
-  const [slotId, setSlotId] = useState<TimeSlotId>('evening');
+  // 언제: 시작~끝 범위 (30분 단위). 시간대 칩은 빠른 선택용
+  const [range, setRange] = useState({ start: 17 * 60, end: 22 * 60 });
+  /** 범위 고르기 중: 시작만 찍고 끝을 기다리는 중이면 true */
+  const [pickingEnd, setPickingEnd] = useState(false);
   const [places, setPlaces] = useState<Place[]>([]);
   const [mustGo, setMustGo] = useState<PinnedPlace | null>(null);
   const [picking, setPicking] = useState(false);
@@ -46,8 +51,9 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
 
-  const slot = getTimeSlot(slotId);
-  const ready = (!!moodId || activities.length > 0) && !!regionId && !loading;
+  const slot = slotForRange(range.start, range.end);
+  const slotId: TimeSlotId = slot.id;
+  const ready = (!!moodId || activities.length > 0) && !!regionId && !loading && !pickingEnd;
 
   function toggleActivity(a: Activity) {
     setActivities((list) => (list.some((x) => x.label === a.label) ? list.filter((x) => x.label !== a.label) : [...list, a]));
@@ -80,13 +86,41 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
   // 시간 고정용 선택지: 시간대 안에서 30분 간격
   const timeOptions = useMemo(() => {
     const out: number[] = [];
-    for (let m = slot.defaultStart; m <= slot.defaultEnd - 60; m += 30) out.push(m);
+    for (let m = range.start; m <= range.end - 60; m += 30) out.push(m);
     return out;
-  }, [slot]);
+  }, [range]);
+
+  const gridTimes = useMemo(() => {
+    const out: number[] = [];
+    for (let m = RANGE_FIRST; m <= RANGE_LAST; m += 30) out.push(m);
+    return out;
+  }, []);
+
+  function changeRange(start: number, end: number) {
+    setRange({ start, end });
+    // 꼭 갈 곳의 고정 시각이 범위 밖으로 나가면 고정을 푼다
+    if (mustGo?.fixedMinute !== undefined && (mustGo.fixedMinute < start || mustGo.fixedMinute > end - 60)) setMustGo({ place: mustGo.place });
+  }
 
   function pickSlot(id: TimeSlotId) {
-    setSlotId(id);
-    if (mustGo?.fixedMinute !== undefined) setMustGo({ place: mustGo.place });
+    const s = TIME_SLOTS.find((x) => x.id === id)!;
+    setPickingEnd(false);
+    changeRange(s.defaultStart, s.defaultEnd);
+  }
+
+  /** 시간표에서 고르기: 처음 누르면 시작, 다음에 누르면 끝 (시작보다 앞을 누르면 그걸 새 시작으로) */
+  function pickTime(m: number) {
+    if (!pickingEnd) {
+      setRange({ start: m, end: m });
+      setPickingEnd(true);
+      return;
+    }
+    if (m - range.start < MIN_RANGE) {
+      setRange({ start: m, end: m });
+      return;
+    }
+    setPickingEnd(false);
+    changeRange(range.start, m);
   }
 
   async function makeCourses() {
@@ -110,8 +144,8 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
           regionId: region.id,
           slotId,
           date: new Date().toISOString().slice(0, 10),
-          startMinute: slot.defaultStart,
-          endMinute: slot.defaultEnd,
+          startMinute: range.start,
+          endMinute: range.end,
           pins: mustGo ? [mustGo] : [],
         },
         moodId,
@@ -241,12 +275,38 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
         <Text style={styles.h2}>언제 만나요?</Text>
         <View style={styles.row}>
           {TIME_SLOTS.map((s) => (
-            <Pressable key={s.id} style={[styles.slot, slotId === s.id && styles.selected]} onPress={() => pickSlot(s.id)}>
+            <Pressable key={s.id} style={[styles.slot, !pickingEnd && isSlotRange(s, range.start, range.end) && styles.selected]} onPress={() => pickSlot(s.id)}>
               <Text style={styles.slotEmoji}>{s.emoji}</Text>
               <Text style={styles.tileTitle}>{s.label}</Text>
-              <Text style={styles.small}>{formatMinute(s.defaultStart)}~</Text>
+              <Text style={styles.small}>
+                {clock(s.defaultStart)}~{clock(s.defaultEnd)}
+              </Text>
             </Pressable>
           ))}
+        </View>
+        <View style={[styles.between, { marginTop: 14 }]}>
+          <Text style={styles.rangeText} accessibilityLabel="고른 시간">
+            {pickingEnd
+              ? `${formatMinute(range.start)} ~ 끝 시간을 눌러 주세요`
+              : `${clock(range.start)} ~ ${clock(range.end)} · ${formatDuration(range.end - range.start)}`}
+          </Text>
+        </View>
+        <Text style={styles.small}>직접 고르려면 아래에서 시작 → 끝 순서로 눌러요 (30분 단위)</Text>
+        <View style={styles.timeGrid}>
+          {gridTimes.map((m) => {
+            const inRange = !pickingEnd && m >= range.start && m <= range.end;
+            const edge = m === range.start || (!pickingEnd && m === range.end);
+            return (
+              <Pressable
+                key={m}
+                style={[styles.timeCell, inRange && styles.timeCellIn, edge && styles.timeCellEdge]}
+                onPress={() => pickTime(m)}
+                accessibilityLabel={`${clock(m)} 선택`}
+              >
+                <Text style={[styles.timeCellText, edge && { color: colors.bg, fontWeight: '700' }]}>{clock(m)}</Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         <Text style={styles.h2}>꼭 갈 곳 있어요? (선택)</Text>
@@ -318,7 +378,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.buttonText}>{!moodId && activities.length === 0 ? '어떤 데이트인지 골라 주세요' : !regionId ? '지역을 골라 주세요' : '코스 3개 보기'}</Text>
+            <Text style={styles.buttonText}>{!moodId && activities.length === 0 ? '어떤 데이트인지 골라 주세요' : !regionId ? '지역을 골라 주세요' : pickingEnd ? '끝 시간을 골라 주세요' : '코스 3개 보기'}</Text>
           )}
         </Pressable>
       </SafeAreaView>
@@ -339,6 +399,12 @@ const styles = StyleSheet.create({
   tileTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   selected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   row: { flexDirection: 'row', gap: 8 },
+  rangeText: { color: colors.text, fontSize: 17, fontWeight: '700' },
+  timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  timeCell: { width: '18%', flexGrow: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center', backgroundColor: colors.card },
+  timeCellIn: { backgroundColor: colors.accentSoft },
+  timeCellEdge: { backgroundColor: colors.accent },
+  timeCellText: { color: colors.text, fontSize: 13 },
   groupTab: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
   groupTabOn: { backgroundColor: colors.text, borderColor: colors.text },
   groupTabText: { color: colors.text, fontSize: 14, fontWeight: '700' },

@@ -42,3 +42,35 @@ export const CATEGORY_EMOJI: Record<string, string> = {
   walk: '🌿',
   bar: '🍷',
 };
+
+/** 시간 범위로 고를 수 있는 처음과 끝 (30분 단위) */
+export const RANGE_FIRST = 10 * 60;
+export const RANGE_LAST = 24 * 60;
+/** 가장 짧은 데이트 */
+export const MIN_RANGE = 60;
+
+/** 고른 시간 범위와 가장 많이 겹치는 시간대 (코스 흐름의 기본값을 정할 때 씀) */
+export function slotForRange(start: number, end: number): TimeSlot {
+  let best = TIME_SLOTS[0];
+  let bestOverlap = -1;
+  for (const s of TIME_SLOTS) {
+    const overlap = Math.min(end, s.defaultEnd) - Math.max(start, s.defaultStart);
+    if (overlap > bestOverlap) {
+      best = s;
+      bestOverlap = overlap;
+    }
+  }
+  return best;
+}
+
+/** 시간대 칩을 누르면 그 시간대의 기본 범위가 고른 범위와 같은지 */
+export function isSlotRange(slot: TimeSlot, start: number, end: number): boolean {
+  return slot.defaultStart === start && slot.defaultEnd === end;
+}
+
+/** "5시간 30분" */
+export function formatDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return [h ? `${h}시간` : '', m ? `${m}분` : ''].filter(Boolean).join(' ') || '0분';
+}
