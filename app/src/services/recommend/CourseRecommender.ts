@@ -1,4 +1,14 @@
-import type { Course, CourseRequest, Place } from '../../domain/types';
+import type { Course, CourseRequest, Place, PlaceCategory, TravelEstimate } from '../../domain/types';
+
+/** 다른 곳 고르기 리스트의 한 줄 */
+export interface StopSuggestion {
+  place: Place;
+  score: number;
+  /** 앞 일정에서 오는 이동 (맨 앞이면 없음) */
+  travel?: TravelEstimate;
+  /** 화면에 보여 줄 짧은 이유: 후기 · 도보 N분 · 취향 */
+  reason: string;
+}
 
 /**
  * 코스 추천 엔진의 경계. 지금은 규칙 기반(RuleBasedRecommender)이고,
@@ -12,6 +22,8 @@ export interface CourseRecommender {
    * place를 주면 그곳을, 없으면 그 자리에 어울리는 곳을 추천해서 넣는다. 시간표는 다시 계산한다.
    */
   insertStop(course: Course, index: number, place?: Place): Promise<Course>;
+  /** index 자리에 넣을 만한 곳을 점수 순으로 (category로 종류를 좁힐 수 있음) */
+  suggestStops(course: Course, index: number, options?: { category?: PlaceCategory; avoidIds?: string[]; limit?: number }): Promise<StopSuggestion[]>;
   /** 결과 코스에서 index번째 일정을 빼고 시간표를 다시 계산한다. */
   removeStop(course: Course, index: number): Promise<Course>;
   /** index번째 일정을 다른 곳으로 바꾼다 (place가 없으면 추천) */

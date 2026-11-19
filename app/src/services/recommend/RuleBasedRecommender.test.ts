@@ -206,3 +206,34 @@ describe('editing a planned course', () => {
     expect(stop.pinned).toBe(true);
   });
 });
+
+describe('preferences and suggestion list', () => {
+  const recommender = new RuleBasedRecommender(new MockPlaceProvider(), new StraightLineRouteProvider());
+  const base = { regionId: 'seongsu', slotId: 'evening' as const, date: '2026-11-21', startMinute: 17 * 60, endMinute: 22 * 60, pins: [], preferences: [] };
+
+  it('scores places by vibe, budget and indoor/outdoor', async () => {
+    const { prefScore } = await import('../../domain/prefs');
+    const place = (name: string, category: Place['category'], tags: string[] = []) =>
+      ({ id: name, name, regionId: 'x', category, location: { lat: 0, lng: 0 }, rating: 4, openMinute: 0, closeMinute: 1440, tags, description: '' }) as Place;
+    expect(prefScore(place('루프탑 와인바', 'bar'), { vibe: 'romantic' }).score).toBeGreaterThan(0);
+    expect(prefScore(place('명동 오마카세', 'restaurant'), { budget: 'cheap' }).score).toBeLessThan(0);
+    expect(prefScore(place('엄마손 칼국수', 'restaurant'), { budget: 'cheap' }).reasons).toContain('가성비');
+    expect(prefScore(place('서울숲', 'walk'), { space: 'indoor' }).score).toBeLessThan(0);
+    expect(prefScore(place('서울숲', 'walk'), undefined).score).toBe(0);
+  });
+
+  it('keeps every leg walkable when walking only', async () => {
+    const course = await recommender.recommend({ ...base, prefs: { walkOnly: true } });
+    for (const leg of course.legs) expect(leg.travel.mode).toBe('walk');
+  });
+
+  it('lists ranked alternatives with reasons, filtered by kind', async () => {
+    const course = await recommender.recommend(base);
+    const list = await recommender.suggestStops(course, 1, { category: 'cafe', limit: 5 });
+    expect(list.length).toBeGreaterThan(0);
+    expect(list.every((s) => s.place.category === 'cafe')).toBe(true);
+    expect(list.every((s) => !course.stops.some((st) => st.place.id === s.place.id))).toBe(true);
+    for (let i = 1; i < list.length; i++) expect(list[i - 1].score).toBeGreaterThanOrEqual(list[i].score);
+    expect(list[0].reason).toMatch(/분/);
+  });
+});

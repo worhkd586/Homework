@@ -59,7 +59,7 @@ const EXCLUDE: Partial<Record<PlaceCategory, RegExp>> = {
 };
 
 /** 어느 종류든 데이트 코스로는 안 맞는 곳 (주차장, 아이용 시설 등) */
-const EXCLUDE_ALL = /주차장|화장실|매표소|어린이|키즈|유아|근린공원|소공원|놀이터/;
+const EXCLUDE_ALL = /주차장|화장실|매표소|어린이|키즈|유아|근린공원|소공원|놀이터|수영장|눈썰매|물놀이|체육센터|체육관|문화센터|주민센터|복지관/;
 
 /** 후기가 이보다 적으면 (같은 종류에 다른 후보가 충분할 때) 뺀다 */
 const MIN_REVIEWS = 10;
@@ -70,7 +70,7 @@ export function categoryOf(doc: KakaoDoc, hint?: PlaceCategory): PlaceCategory {
   if (/술집|와인|칵테일|바$|호프|이자카야|포장마차/.test(name)) return 'bar';
   // '방탈출카페'·'보드카페'는 카카오에서 카페로도 분류되지만 앱에서는 놀거리다
   if (/방탈출|보드카페|보드게임|VR/.test(`${name} ${doc.place_name}`)) return 'activity';
-  if (doc.category_group_code === 'CE7' || /카페|디저트|제과|베이커리/.test(name)) return 'cafe';
+  if (doc.category_group_code === 'CE7' || /카페|디저트|제과|베이커리|간식|아이스크림|도넛|젤라또|빙수/.test(name)) return 'cafe';
   if (doc.category_group_code === 'FD6') return 'restaurant';
   if (/미술관|박물관|전시|공연|영화|기념관/.test(name)) return 'culture';
   if (/테마파크|놀이|아쿠아리움|동물원|공방|방탈출|보드게임|볼링|오락|체험|스포츠|레저|클라이밍/.test(name)) return 'activity';

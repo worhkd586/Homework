@@ -12,7 +12,8 @@ import type {
 import { CATEGORY_LABEL, formatMinute, getTimeSlot } from '../../domain/timeSlots';
 import type { PlaceProvider, RouteProvider } from '../places/PlaceProvider';
 import { defaultStayMinutes } from '../places/mockData';
-import type { CourseRecommender } from './CourseRecommender';
+import type { CourseRecommender, StopSuggestion } from './CourseRecommender';
+import { prefScore } from '../../domain/prefs';
 
 /** 시간 배분 단계에서 쓰는 이동시간 어림값 */
 const TRAVEL_BUFFER = 15;
@@ -176,14 +177,22 @@ export class RuleBasedRecommender implements CourseRecommender {
           const strict = pool.filter((p) => matchesTheme(p, match));
           if (strict.length || !LAST_RESORT.includes(category) || category === item.category) pool = strict;
         }
+        const walkOnly = !!request.prefs?.walkOnly && planned.length > 0;
         for (const place of pool) {
           const toHere = await this.routes.estimateTravel(prevLoc, place.location);
+          if (walkOnly && toHere.mode !== 'walk') continue;
           const arrive = clock + (planned.length ? toHere.minutes : 0);
           if (!isOpenDuring(place, arrive, arrive + minStay(stay))) continue;
           const toNext = nextPin ? (await this.routes.estimateTravel(place.location, nextPin.pin.place.location)).minutes : 0;
           const prefHits = place.tags.filter((t) => request.preferences.includes(t)).length + (matchesKeyword(place, request.keywords) ? 2 : 0);
           const score =
-            place.rating * 20 + (isFlagship(place) ? 25 : 0) + prefHits * 8 - toHere.minutes * 0.8 - toNext * 0.4 - (avoided.has(place.id) ? 40 : 0);
+            place.rating * 20 +
+            (isFlagship(place) ? 25 : 0) +
+            prefHits * 8 +
+            prefScore(place, request.prefs).score -
+            toHere.minutes * (request.prefs?.walkOnly ? 1.5 : 0.8) -
+            toNext * 0.4 -
+            (avoided.has(place.id) ? 40 : 0);
           if (!best || score > best.score) best = { place, score, travel: toHere.minutes, mode: toHere.mode };
         }
       }
@@ -197,7 +206,9 @@ export class RuleBasedRecommender implements CourseRecommender {
       used.add(best.place.id);
       const prefs = best.place.tags.filter((t) => request.preferences.includes(t));
       const parts = [`${CATEGORY_LABEL[best.place.category]} · ${popularityLabel(best.place)}`];
+      if (isFlagship(best.place)) parts.push('대표 명소');
       if (prefs.length) parts.push(prefs.map((t) => `‘${t}’`).join(' ') + ' 취향');
+      parts.push(...prefScore(best.place, request.prefs).reasons);
       planned.push({ place: best.place, reason: parts.join(' · ') });
       clock += (planned.length > 1 ? best.travel : 0) + stay;
       prevLoc = best.place.location;
@@ -238,40 +249,66 @@ export class RuleBasedRecommender implements CourseRecommender {
     };
   }
 
-  async insertStop(course: Course, index: number, place?: Place, avoidIds: string[] = []): Promise<Course> {
+  /**
+   * index 자리에 넣을 만한 곳을 점수 순으로 (다른 곳 고르기 리스트용).
+   * 영업 중이고, 앞뒤 이동이 짧고, 인기 많고, 취향에 맞고, 코스에 없던 종류면 높게.
+   */
+  async suggestStops(
+    course: Course,
+    index: number,
+    options: { category?: PlaceCategory; avoidIds?: string[]; limit?: number } = {},
+  ): Promise<StopSuggestion[]> {
     const request = course.request;
     const planned = toPlanned(course);
     const at = Math.max(0, Math.min(index, planned.length));
     const prev = planned[at - 1];
     const next = planned[at];
+    const candidates = await this.places.listPlaces(request.regionId);
+    const used = new Set([...planned.map((p) => p.place.id), ...(options.avoidIds ?? [])]);
+    const usedCategories = new Set(planned.map((p) => p.place.category));
+    const prevStop = course.stops[at - 1];
+    const clock = prevStop ? prevStop.leaveMinute : request.startMinute;
+    const out: StopSuggestion[] = [];
+    for (const candidate of candidates) {
+      if (used.has(candidate.id)) continue;
+      if (options.category && candidate.category !== options.category) continue;
+      const toHere = prev ? await this.routes.estimateTravel(prev.place.location, candidate.location) : undefined;
+      if (request.prefs?.walkOnly && toHere && toHere.mode !== 'walk') continue;
+      const arrive = clock + (toHere?.minutes ?? 0);
+      if (!isOpenDuring(candidate, arrive, arrive + minStay(stayOf(candidate)))) continue;
+      const toNext = next ? (await this.routes.estimateTravel(candidate.location, next.place.location)).minutes : 0;
+      const pref = prefScore(candidate, request.prefs);
+      const wished = matchesKeyword(candidate, request.keywords);
+      const score =
+        candidate.rating * 20 +
+        (isFlagship(candidate) ? 25 : 0) +
+        (usedCategories.has(candidate.category) ? 0 : 10) +
+        (wished ? 16 : 0) +
+        pref.score -
+        (toHere?.minutes ?? 0) * 0.8 -
+        toNext * 0.8;
+      const why = [popularityLabel(candidate)];
+      if (toHere) why.push(`${toHere.mode === 'walk' ? '도보' : '대중교통'} ${toHere.minutes}분`);
+      if (isFlagship(candidate)) why.push('대표 명소');
+      if (wished) why.push('하고 싶은 것');
+      why.push(...pref.reasons);
+      out.push({ place: candidate, score, travel: toHere, reason: why.join(' · ') });
+    }
+    return out.sort((a, b) => b.score - a.score).slice(0, options.limit ?? 30);
+  }
 
+  async insertStop(course: Course, index: number, place?: Place, avoidIds: string[] = []): Promise<Course> {
+    const planned = toPlanned(course);
+    const at = Math.max(0, Math.min(index, planned.length));
     if (place) {
       planned.splice(at, 0, { place, pin: { place }, reason: '직접 추가한 곳' });
     } else {
-      // 그 자리에 어울리는 곳: 영업 중이고, 앞뒤 이동이 짧고, 코스에 없던 종류면 가산점
-      const candidates = await this.places.listPlaces(request.regionId);
-      const used = new Set([...planned.map((p) => p.place.id), ...avoidIds]);
-      const usedCategories = new Set(planned.map((p) => p.place.category));
-      const prevStop = course.stops[at - 1];
-      const clock = prevStop ? prevStop.leaveMinute : request.startMinute;
-      let best: { place: Place; score: number; travel?: number; mode?: string } | undefined;
-      for (const candidate of candidates) {
-        if (used.has(candidate.id)) continue;
-        const toHere = prev ? await this.routes.estimateTravel(prev.place.location, candidate.location) : undefined;
-        const arrive = clock + (toHere?.minutes ?? 0);
-        if (!isOpenDuring(candidate, arrive, arrive + minStay(stayOf(candidate)))) continue;
-        const toNext = next ? (await this.routes.estimateTravel(candidate.location, next.place.location)).minutes : 0;
-        const score =
-          candidate.rating * 20 + (isFlagship(candidate) ? 25 : 0) + (usedCategories.has(candidate.category) ? 0 : 10) - (toHere?.minutes ?? 0) * 0.8 - toNext * 0.8;
-        if (!best || score > best.score) best = { place: candidate, score, travel: toHere?.minutes, mode: toHere?.mode };
-      }
+      const [best] = await this.suggestStops(course, at, { avoidIds, limit: 1 });
       if (!best) {
         return { ...course, warnings: [...course.warnings, { kind: 'unfilled', message: '그 시간에 열려 있는 추천 장소를 찾지 못했어요.' }] };
       }
-      const parts = [`추천 · ${CATEGORY_LABEL[best.place.category]} · ${popularityLabel(best.place)}`];
-      planned.splice(at, 0, { place: best.place, reason: parts.join(' · ') });
+      planned.splice(at, 0, { place: best.place, reason: `추천 · ${CATEGORY_LABEL[best.place.category]} · ${best.reason}` });
     }
-
     return this.reschedule(course, planned);
   }
 
@@ -337,8 +374,11 @@ const FLAGSHIPS = [
   '창덕궁', '덕수궁', '화성행궁', '헤이리', '두물머리', '스타필드', '더현대',
 ];
 
+/** 대표 명소 자체만 (이름이 같거나 '이름 + 띄어쓰기 + 부분'). '○○ 여의도점' 같은 지점 가게나 '경복궁블랙'처럼 이름만 빌린 곳은 아님 */
 export function isFlagship(place: Place): boolean {
-  return FLAGSHIPS.some((f) => place.name.includes(f));
+  const name = place.name.trim();
+  if (/점$/.test(name)) return false;
+  return FLAGSHIPS.some((f) => name === f || name.startsWith(`${f} `) || (f.length >= 4 && name.startsWith(f) && name.length <= f.length + 3));
 }
 
 /** 이름이나 분류(태그)에 주제 말이 들어가는지 */

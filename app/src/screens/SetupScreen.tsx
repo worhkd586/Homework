@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ImageBackground, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import Text from '../ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Course, PinnedPlace, Place, Region, TimeSlotId } from '../domain/types';
-import { MOODS, type MoodId } from '../domain/moods';
+import { BUDGETS, VIBES, type CoursePrefs } from '../domain/prefs';
 import { recommendOptions, suggestRegion } from '../services/recommend/courseOptions';
 import type { SavedCourse } from '../lib/savedCourses';
 import { ACTIVITY_EXAMPLES, parseActivity, type Activity } from '../domain/activities';
@@ -20,13 +20,6 @@ export interface CourseOptions {
 }
 
 const AUTO = 'auto';
-/** 분위기 카드 배경 사진 (Stitch에서 만든 이미지) */
-const MOOD_PHOTOS: Record<MoodId, number> = {
-  talk: require('../../assets/moods/talk.jpg'),
-  new: require('../../assets/moods/new.jpg'),
-  food: require('../../assets/moods/food.jpg'),
-  active: require('../../assets/moods/active.jpg'),
-};
 /** 접힌 상태에서 보이는 지역 수 (✨추천 타일과 함께 2칸 × 4줄) */
 const COLLAPSED_REGIONS = 7;
 const GRID_COLUMNS = 5;
@@ -44,7 +37,7 @@ interface Props {
 }
 
 export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, onDeleteSaved, onResult }: Props) {
-  const [moodId, setMoodId] = useState<MoodId>();
+  const [prefs, setPrefs] = useState<CoursePrefs>({});
   const [activities, setActivities] = useState<Activity[]>([]);
   const [wish, setWish] = useState('');
   const [wishHint, setWishHint] = useState<string>();
@@ -68,7 +61,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
 
   const slot = slotForRange(range.start, range.end);
   const slotId: TimeSlotId = slot.id;
-  const ready = (!!moodId || activities.length > 0) && !!regionId && !loading && !pickingEnd;
+  const ready = !!regionId && !loading && !pickingEnd;
 
   function toggleActivity(a: Activity) {
     setActivities((list) => (list.some((x) => x.label === a.label) ? list.filter((x) => x.label !== a.label) : [...list, a]));
@@ -152,14 +145,14 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
   }
 
   async function makeCourses() {
-    if (!regionId || (!moodId && activities.length === 0)) return;
+    if (!regionId) return;
     setLoading(true);
     setError(undefined);
     try {
       let region = regions.find((r) => r.id === regionId);
       let note: string | undefined;
       if (regionId === AUTO) {
-        const suggestion = await suggestRegion(placeProvider, moodId, activities);
+        const suggestion = await suggestRegion(placeProvider, undefined, activities);
         region = suggestion.region;
         note = `✨ ${region.name} 추천 · ${suggestion.reason}`;
       }
@@ -175,8 +168,9 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
           startMinute: range.start,
           endMinute: range.end,
           pins: mustGo ? [mustGo] : [],
+          prefs,
         },
-        moodId,
+        undefined,
         region.name,
         activities,
       );
@@ -227,35 +221,8 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
         )}
 
         <View style={styles.sectionHead}>
-          <Text style={[styles.h2, styles.h2InRow]}>{saved.length > 0 ? '새 코스 · 분위기' : '분위기'}</Text>
-          <Text style={styles.small}>하나 고르거나 직접 추가</Text>
-        </View>
-        <View style={styles.grid}>
-          {MOODS.map((m) => {
-            const on = moodId === m.id;
-            return (
-              <Pressable
-                key={m.id}
-                style={[styles.moodCard, on && styles.moodCardOn]}
-                onPress={() => setMoodId(on ? undefined : m.id)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: on }}
-                accessibilityLabel={`${m.label} (${m.hint})`}
-              >
-                <ImageBackground source={MOOD_PHOTOS[m.id]} style={styles.moodImage} imageStyle={styles.moodImageInner} resizeMode="cover">
-                  <View style={styles.moodShade} />
-                  <Text style={styles.moodLabel} numberOfLines={1}>
-                    {m.label}
-                  </Text>
-                  {on && (
-                    <View style={styles.check}>
-                      <Text style={styles.checkText}>✓</Text>
-                    </View>
-                  )}
-                </ImageBackground>
-              </Pressable>
-            );
-          })}
+          <Text style={[styles.h2, styles.h2InRow]}>{saved.length > 0 ? '새 코스 · 하고 싶은 거' : '하고 싶은 거'}</Text>
+          <Text style={styles.small}>여러 개 OK · 안 골라도 돼요</Text>
         </View>
         <View style={styles.wishRow}>
           <TextInput
@@ -373,6 +340,47 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
           </>
         )}
 
+        <View style={styles.sectionHead}>
+          <Text style={[styles.h2, styles.h2InRow]}>이런 곳이 좋아요</Text>
+          <Text style={styles.small}>선택 · 추천 순서에 반영</Text>
+        </View>
+        <View style={styles.chips}>
+          {VIBES.map((v) => {
+            const on = prefs.vibe === v.id;
+            return (
+              <Pressable key={v.id} style={[styles.chip, on && styles.chipOn]} onPress={() => setPrefs({ ...prefs, vibe: on ? undefined : v.id })} accessibilityState={{ selected: on }}>
+                <Text style={[styles.chipText, on && styles.chipOnText]}>
+                  {v.emoji} {v.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+          {BUDGETS.map((b) => {
+            const on = prefs.budget === b.id;
+            return (
+              <Pressable key={b.id} style={[styles.chip, on && styles.chipOn]} onPress={() => setPrefs({ ...prefs, budget: on ? undefined : b.id })} accessibilityState={{ selected: on }}>
+                <Text style={[styles.chipText, on && styles.chipOnText]}>
+                  {b.emoji} {b.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+          {([
+            ['indoor', '🏠 실내 위주'],
+            ['outdoor', '🌳 야외 위주'],
+          ] as const).map(([id, label]) => {
+            const on = prefs.space === id;
+            return (
+              <Pressable key={id} style={[styles.chip, on && styles.chipOn]} onPress={() => setPrefs({ ...prefs, space: on ? undefined : id })} accessibilityState={{ selected: on }}>
+                <Text style={[styles.chipText, on && styles.chipOnText]}>{label}</Text>
+              </Pressable>
+            );
+          })}
+          <Pressable style={[styles.chip, prefs.walkOnly && styles.chipOn]} onPress={() => setPrefs({ ...prefs, walkOnly: !prefs.walkOnly })} accessibilityState={{ selected: !!prefs.walkOnly }}>
+            <Text style={[styles.chipText, prefs.walkOnly && styles.chipOnText]}>🚶 걸어서만</Text>
+          </Pressable>
+        </View>
+
         <Text style={styles.h2}>꼭 갈 곳 있어요? (선택)</Text>
         {!regionId || regionId === AUTO ? (
           <Text style={styles.muted}>{regionId === AUTO ? '지역을 직접 고르면 꼭 갈 곳을 넣을 수 있어요.' : '지역을 먼저 골라 주세요.'}</Text>
@@ -442,7 +450,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.buttonText}>{!moodId && activities.length === 0 ? '어떤 데이트인지 골라 주세요' : !regionId ? '지역을 골라 주세요' : pickingEnd ? '끝 시간을 골라 주세요' : '✨ 코스 3개 추천받기'}</Text>
+            <Text style={styles.buttonText}>{!regionId ? '지역을 골라 주세요' : pickingEnd ? '끝 시간을 골라 주세요' : '✨ 코스 3개 추천받기'}</Text>
           )}
         </Pressable>
       </SafeAreaView>

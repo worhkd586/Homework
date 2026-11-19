@@ -92,6 +92,8 @@ export interface CourseRequest {
   keywords?: string[];
   /** 고른 주제: 이 종류 자리에는 match 말이 이름·분류에 들어간 곳만 (있을 때) 넣는다 */
   wishes?: Array<{ category: PlaceCategory; match: string[] }>;
+  /** 내 취향 (분위기·가격대·실내외·걸어서만) */
+  prefs?: import('./prefs').CoursePrefs;
   /** 시간대 기본 흐름 대신 쓸 흐름 (기분별 코스 템플릿) */
   flow?: PlaceCategory[];
   /** 코스 이름 (없으면 "지역 시간대 코스") */

@@ -7,6 +7,7 @@ import { CATEGORY_LABEL, formatDuration, formatMinute, getTimeSlot, isSlotRange 
 import { dataSourceNote, placeProvider, recommender } from '../lib/services';
 import { colors } from '../ui/theme';
 import PlacePhoto from '../ui/PlacePhoto';
+import PlaceSuggestionList from '../ui/PlaceSuggestionList';
 import { popularityLabel } from '../services/recommend/RuleBasedRecommender';
 
 interface Props {
@@ -79,45 +80,15 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
     }
   }
 
-  const inCourse = new Set(course.stops.map((s) => s.place.id));
-  const choices = places.filter((p) => !inCourse.has(p.id) && (!query || p.name.includes(query) || p.description.includes(query)));
-
-  /** 추천받기 / 직접 고르기 (새 일정 추가, 다른 곳으로 바꾸기 공용) */
-  const placeChooser = (onPick: (place?: Place) => void) => (
-    <>
-      <View style={styles.choices}>
-        <Pressable style={[styles.choice, styles.choicePrimary]} onPress={() => onPick()}>
-          <Text style={styles.choiceText}>✨ 추천받기</Text>
-        </Pressable>
-        <Pressable style={[styles.choice, picking && styles.choiceOn]} onPress={() => setPicking(!picking)}>
-          <Text style={styles.choiceText}>📍 직접 고르기</Text>
-        </Pressable>
-        <Pressable onPress={() => setPanel(null)} hitSlop={12} accessibilityLabel="닫기">
-          <Text style={styles.muted}>✕</Text>
-        </Pressable>
-      </View>
-      {picking && (
-        <View style={{ marginTop: 10 }}>
-          <TextInput style={styles.input} placeholder="장소 이름 검색" placeholderTextColor={colors.muted} value={query} onChangeText={setQuery} />
-          {choices.map((p) => (
-            <Pressable key={p.id} style={styles.placeRow} onPress={() => onPick(p)}>
-              <PlacePhoto place={p} size={44} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{p.name}</Text>
-                <Text style={styles.small} numberOfLines={1}>
-                  {CATEGORY_LABEL[p.category]} · {popularityLabel(p)} · {p.description}
-                </Text>
-              </View>
-            </Pressable>
-          ))}
-        </View>
-      )}
-    </>
-  );
-
   const addSlot = (index: number) =>
     panel?.kind === 'add' && panel.index === index ? (
-      <View style={styles.panel}>{busy ? <ActivityIndicator color={colors.accent} /> : placeChooser((p) => run(() => recommender.insertStop(course, index, p)))}</View>
+      <View style={styles.panel}>
+        {busy ? (
+          <ActivityIndicator color={colors.accent} />
+        ) : (
+          <PlaceSuggestionList course={course} index={index} mode="add" onPick={(p) => run(() => recommender.insertStop(course, index, p))} onClose={() => setPanel(null)} />
+        )}
+      </View>
     ) : (
       <Pressable style={styles.addRound} onPress={() => open({ kind: 'add', index })} hitSlop={6} accessibilityLabel="여기에 일정 추가">
         <Text style={styles.addRoundText}>＋</Text>
@@ -170,7 +141,11 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
         </View>
       );
     }
-    return <View style={{ marginTop: 10 }}>{placeChooser((p) => run(() => recommender.replaceStop(course, index, p)))}</View>;
+    return (
+      <View style={{ marginTop: 10 }}>
+        <PlaceSuggestionList course={course} index={index} mode="replace" onPick={(p) => run(() => recommender.replaceStop(course, index, p))} onClose={() => setPanel(null)} />
+      </View>
+    );
   };
 
   return (
