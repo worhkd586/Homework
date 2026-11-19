@@ -9,8 +9,9 @@ import { placeVerdicts, type SavedCourse } from '../lib/savedCourses';
 import { ACTIVITY_EXAMPLES, parseActivity, type Activity } from '../domain/activities';
 import { CATEGORY_EMOJI, CATEGORY_LABEL, MIN_RANGE, RANGE_FIRST, RANGE_LAST, TIME_SLOTS, formatDuration, formatMinute, isSlotRange, slotForRange } from '../domain/timeSlots';
 import { placeProvider, recommender } from '../lib/services';
-import { colors, radius, softShadow } from '../ui/theme';
+import { colors, radius } from '../ui/theme';
 import PlacePhoto from '../ui/PlacePhoto';
+import Segmented from '../ui/Segmented';
 import { popularityLabel } from '../services/recommend/RuleBasedRecommender';
 
 export interface CourseOptions {
@@ -201,9 +202,9 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.brand}>오늘어디가 •</Text>
+        <Text style={styles.brand}>오늘어디가</Text>
         <Text style={styles.title}>어떤 데이트를 할까요?</Text>
-        <Text style={styles.muted}>기분이나 하고 싶은 걸 고르면, 갈 곳과 순서는 짜 드려요.</Text>
+        <Text style={styles.subtitle}>하고 싶은 거·지역·시간만 고르면 코스를 짜 드려요.</Text>
 
         {hasCurrent && (
           <Pressable style={[styles.card, styles.resume]} onPress={onResume}>
@@ -244,13 +245,10 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
           </>
         )}
 
-        <View style={styles.sectionHead}>
-          <Text style={[styles.h2, styles.h2InRow]}>{saved.length > 0 ? '새 코스 · 하고 싶은 거' : '하고 싶은 거'}</Text>
-          <Text style={styles.small}>여러 개 OK · 안 골라도 돼요</Text>
-        </View>
+        <Text style={styles.h2}>{saved.length > 0 ? '새 코스 · 하고 싶은 거' : '하고 싶은 거'}</Text>
         <View style={styles.wishRow}>
           <TextInput
-            style={[styles.input, { flex: 1, minWidth: 0, marginBottom: 0, minHeight: 44 }]}
+            style={[styles.input, { flex: 1, minWidth: 0, marginBottom: 0 }]}
             placeholder="직접 추가 (예: 도자기, 볼링, 한강)"
             placeholderTextColor={colors.muted}
             value={wish}
@@ -262,21 +260,19 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
             <Text style={styles.buttonTextSmall}>추가</Text>
           </Pressable>
         </View>
-        <View style={[styles.chips, { marginTop: 12 }]}>
+        <View style={styles.chips}>
           {activities
             .filter((a) => !ACTIVITY_EXAMPLES.some((x) => x.label === a.label))
             .map((a) => (
-              <Pressable key={a.label} style={[styles.chip, styles.chipOn]} onPress={() => toggleActivity(a)} accessibilityLabel={`${a.label} 빼기`}>
-                <Text style={[styles.text, styles.chipOnText]}>✍️ {a.label} ✕</Text>
+              <Pressable key={a.label} style={[styles.chip, styles.chipOn]} onPress={() => toggleActivity(a)} accessibilityLabel={`${a.label} 빼기`} hitSlop={4}>
+                <Text style={[styles.chipText, styles.chipOnText]}>{a.label} ✕</Text>
               </Pressable>
             ))}
           {ACTIVITY_EXAMPLES.map((a) => {
             const on = activities.some((x) => x.label === a.label);
             return (
-              <Pressable key={a.label} style={[styles.chip, on && styles.chipOn]} onPress={() => toggleActivity(a)}>
-                <Text style={[styles.chipText, on && styles.chipOnText]}>
-                  {a.emoji} {a.label}
-                </Text>
+              <Pressable key={a.label} style={[styles.chip, on && styles.chipOn]} onPress={() => toggleActivity(a)} accessibilityState={{ selected: on }} hitSlop={4}>
+                <Text style={[styles.chipText, on && styles.chipOnText]}>{a.label}</Text>
               </Pressable>
             );
           })}
@@ -284,18 +280,13 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
         {wishHint && <Text style={styles.small}>{wishHint}</Text>}
 
         <Text style={styles.h2}>어디서 만나요?</Text>
-        <View style={[styles.row, { marginBottom: 10 }]}>
-          {(['서울', '경기', '제주'] as const).map((g) => (
-            <Pressable key={g} style={[styles.groupTab, group === g && styles.groupTabOn]} onPress={() => setGroup(g)}>
-              <Text style={[styles.groupTabText, group === g && { color: colors.onAccent }]}>{g}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <Segmented options={(['서울', '경기', '제주'] as const).map((g) => ({ id: g, label: g }))} value={group} onChange={setGroup} role="tab" />
+        <View style={{ height: 12 }} />
         <View style={styles.grid}>
           <Pressable style={[styles.tile, regionId === AUTO && styles.selected]} onPress={() => setRegionId(AUTO)}>
-            <Text style={styles.tileTitle}>✨ 추천해 줘</Text>
+            <Text style={[styles.tileTitle, { color: colors.accent }]}>✨ 추천해 줘</Text>
             <Text style={styles.small} numberOfLines={1}>
-              기분에 맞는 동네로
+              고른 것에 맞는 동네로
             </Text>
           </Pressable>
           {shownRegions.map((r) => (
@@ -313,30 +304,24 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
           </Pressable>
         )}
 
-        <View style={styles.sectionHead}>
-          <Text style={[styles.h2, styles.h2InRow]}>언제 만나요?</Text>
+        <Text style={styles.h2}>언제 만나요?</Text>
+        <Segmented
+          options={TIME_SLOTS.map((s) => ({ id: s.id, label: s.label }))}
+          value={pickingEnd ? undefined : TIME_SLOTS.find((s) => isSlotRange(s, range.start, range.end))?.id}
+          onChange={pickSlot}
+        />
+        <View style={[styles.between, { marginTop: 6 }]}>
+          <Text style={styles.rangeText} accessibilityLabel="고른 시간">
+            {pickingEnd
+              ? `${formatMinute(range.start)} ~ 끝 시간을 눌러 주세요`
+              : `${clock(range.start)} ~ ${clock(range.end)} · ${formatDuration(range.end - range.start)}`}
+          </Text>
           {!pickingEnd && (
             <Pressable style={styles.linkButton} onPress={() => setShowGrid(!showGrid)} hitSlop={6}>
               <Text style={styles.link}>{showGrid ? '접기' : '직접 고르기'}</Text>
             </Pressable>
           )}
         </View>
-        <View style={styles.row}>
-          {TIME_SLOTS.map((s) => (
-            <Pressable key={s.id} style={[styles.slot, !pickingEnd && isSlotRange(s, range.start, range.end) && styles.selected]} onPress={() => pickSlot(s.id)}>
-              <Text style={styles.slotEmoji}>{s.emoji}</Text>
-              <Text style={[styles.tileTitle, !pickingEnd && isSlotRange(s, range.start, range.end) && { color: colors.accent }]}>{s.label}</Text>
-              <Text style={styles.small}>
-                {clock(s.defaultStart)}~{clock(s.defaultEnd)}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <Text style={[styles.rangeText, { marginTop: 12 }]} accessibilityLabel="고른 시간">
-          {pickingEnd
-            ? `${formatMinute(range.start)} ~ 끝 시간을 눌러 주세요`
-            : `${clock(range.start)} ~ ${clock(range.end)} · ${formatDuration(range.end - range.start)}`}
-        </Text>
         {(showGrid || pickingEnd) && (
           <>
             <Text style={styles.small}>시작 → 끝 순서로 눌러요 (30분 단위)</Text>
@@ -364,17 +349,16 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
           </>
         )}
 
-        <View style={styles.sectionHead}>
-          <Text style={[styles.h2, styles.h2InRow]}>이런 곳이 좋아요</Text>
-          <Text style={styles.small}>선택 · 추천 순서에 반영</Text>
-        </View>
+        <Text style={styles.h2}>
+          이런 곳이 좋아요 <Text style={styles.optional}>선택</Text>
+        </Text>
         <View style={styles.chips}>
           {VIBES.map((v) => {
             const on = prefs.vibe === v.id;
             return (
-              <Pressable key={v.id} style={[styles.chip, on && styles.chipOn]} onPress={() => setPrefs({ ...prefs, vibe: on ? undefined : v.id })} accessibilityState={{ selected: on }}>
+              <Pressable key={v.id} style={[styles.chip, on && styles.chipOn]} onPress={() => setPrefs({ ...prefs, vibe: on ? undefined : v.id })} accessibilityState={{ selected: on }} hitSlop={4}>
                 <Text style={[styles.chipText, on && styles.chipOnText]}>
-                  {v.emoji} {v.label}
+                  {v.label}
                 </Text>
               </Pressable>
             );
@@ -382,53 +366,39 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
           {BUDGETS.map((b) => {
             const on = prefs.budget === b.id;
             return (
-              <Pressable key={b.id} style={[styles.chip, on && styles.chipOn]} onPress={() => setPrefs({ ...prefs, budget: on ? undefined : b.id })} accessibilityState={{ selected: on }}>
+              <Pressable key={b.id} style={[styles.chip, on && styles.chipOn]} onPress={() => setPrefs({ ...prefs, budget: on ? undefined : b.id })} accessibilityState={{ selected: on }} hitSlop={4}>
                 <Text style={[styles.chipText, on && styles.chipOnText]}>
-                  {b.emoji} {b.label}
+                  {b.label}
                 </Text>
               </Pressable>
             );
           })}
           {([
-            ['indoor', '🏠 실내 위주'],
-            ['outdoor', '🌳 야외 위주'],
+            ['indoor', '실내 위주'],
+            ['outdoor', '야외 위주'],
           ] as const).map(([id, label]) => {
             const on = prefs.space === id;
             return (
-              <Pressable key={id} style={[styles.chip, on && styles.chipOn]} onPress={() => setPrefs({ ...prefs, space: on ? undefined : id })} accessibilityState={{ selected: on }}>
+              <Pressable key={id} style={[styles.chip, on && styles.chipOn]} onPress={() => setPrefs({ ...prefs, space: on ? undefined : id })} accessibilityState={{ selected: on }} hitSlop={4}>
                 <Text style={[styles.chipText, on && styles.chipOnText]}>{label}</Text>
               </Pressable>
             );
           })}
         </View>
 
-        <View style={styles.sectionHead}>
-          <Text style={[styles.h2, styles.h2InRow]}>어떻게 이동해요?</Text>
-          <Text style={styles.small}>이동시간을 이걸로 계산해요</Text>
-        </View>
-        <View style={styles.row}>
-          {TRAVEL_CHOICES.map((t) => {
-            const on = travel === t.id;
-            return (
-              <Pressable
-                key={t.id}
-                style={[styles.slot, on && styles.selected]}
-                onPress={() => {
-                  setTravel(t.id);
-                  setTravelPicked(true);
-                }}
-                accessibilityRole="button"
-                accessibilityState={{ selected: on }}
-              >
-                <Text style={styles.slotEmoji}>{t.emoji}</Text>
-                <Text style={styles.tileTitle}>{t.label}</Text>
-                <Text style={styles.small}>{t.hint}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <Text style={styles.h2}>어떻게 이동해요?</Text>
+        <Segmented
+          options={TRAVEL_CHOICES.map((t) => ({ id: t.id, label: t.label, sub: t.hint }))}
+          value={travel}
+          onChange={(id) => {
+            setTravel(id);
+            setTravelPicked(true);
+          }}
+        />
 
-        <Text style={styles.h2}>꼭 갈 곳 있어요? (선택)</Text>
+        <Text style={styles.h2}>
+          꼭 갈 곳 <Text style={styles.optional}>선택</Text>
+        </Text>
         {!regionId || regionId === AUTO ? (
           <Text style={styles.muted}>{regionId === AUTO ? '지역을 직접 고르면 꼭 갈 곳을 넣을 수 있어요.' : '지역을 먼저 골라 주세요.'}</Text>
         ) : mustGo ? (
@@ -507,55 +477,49 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, paddingBottom: 40 },
-  brand: { alignSelf: 'flex-start', fontSize: 13, fontWeight: '700', color: colors.accent, backgroundColor: colors.accentSoft, paddingHorizontal: 12, paddingVertical: 5, borderRadius: radius.pill, overflow: 'hidden' },
-  title: { fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.5, marginTop: 10 },
-  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 28, marginBottom: 12 },
-  h2InRow: { marginTop: 0, marginBottom: 0 },
-  chipText: { color: colors.text, fontSize: 14 },
-  moreLink: { color: colors.accent, fontSize: 14, fontWeight: '700' },
-  linkButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
-  link: { color: colors.accent, fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' },
-  h2: { fontSize: 19, fontWeight: '700', color: colors.text, marginTop: 28, marginBottom: 12 },
+  content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40 },
+  brand: { fontSize: 14, fontWeight: '800', color: colors.accent },
+  title: { fontSize: 26, fontWeight: '800', color: colors.text, letterSpacing: -0.5, marginTop: 6 },
+  subtitle: { color: colors.muted, fontSize: 15, marginTop: 6 },
+  h2: { fontSize: 17, fontWeight: '800', color: colors.text, marginTop: 32, marginBottom: 12 },
+  optional: { fontSize: 13, fontWeight: '600', color: colors.muted },
   text: { color: colors.text, fontSize: 15 },
   muted: { color: colors.muted, fontSize: 15, marginTop: 4 },
   small: { color: colors.muted, fontSize: 13, marginTop: 2 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  tile: { width: '48%', flexGrow: 1, padding: 16, borderRadius: radius.tile, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent', ...softShadow },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tile: { width: '48%', flexGrow: 1, paddingVertical: 14, paddingHorizontal: 14, borderRadius: radius.tile, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
   tileTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  selected: { borderColor: colors.accent, backgroundColor: colors.accentSoft, shadowOpacity: 0 },
+  selected: { borderColor: colors.accent, borderWidth: 1.5, backgroundColor: colors.accentSoft },
   row: { flexDirection: 'row', gap: 8 },
-  rangeText: { color: colors.text, fontSize: 17, fontWeight: '700' },
+  rangeText: { color: colors.text, fontSize: 15, fontWeight: '700' },
   timeGrid: { gap: 6, marginTop: 10 },
   timeRow: { flexDirection: 'row', gap: 6 },
-  timeCell: { flex: 1, minHeight: 44, justifyContent: 'center', borderRadius: 14, alignItems: 'center', backgroundColor: colors.card },
+  timeCell: { flex: 1, minHeight: 44, justifyContent: 'center', borderRadius: 10, alignItems: 'center', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
   timeCellEmpty: { flex: 1 },
-  timeCellIn: { backgroundColor: colors.accentSoft },
-  timeCellEdge: { backgroundColor: colors.accent },
+  timeCellIn: { backgroundColor: colors.accentSoft, borderColor: colors.accentSoft },
+  timeCellEdge: { backgroundColor: colors.accent, borderColor: colors.accent },
   timeCellText: { color: colors.text, fontSize: 14 },
   more: { minHeight: 44, justifyContent: 'center', alignItems: 'center', marginTop: 4 },
-  moreText: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  groupTab: { paddingHorizontal: 24, minHeight: 44, justifyContent: 'center', borderRadius: radius.pill, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
-  groupTabOn: { backgroundColor: colors.accent, borderColor: colors.accent },
-  groupTabText: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  slot: { flex: 1, alignItems: 'center', paddingVertical: 14, borderRadius: radius.tile, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent', ...softShadow },
-  slotEmoji: { fontSize: 22 },
-  card: { padding: 16, borderRadius: radius.card, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent' },
+  moreLink: { color: colors.accent, fontSize: 14, fontWeight: '700' },
+  linkButton: { minHeight: 44, justifyContent: 'center' },
+  link: { color: colors.accent, fontSize: 14, fontWeight: '700' },
+  card: { padding: 16, borderRadius: radius.card, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
   between: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
-  chip: { paddingHorizontal: 16, minHeight: 44, justifyContent: 'center', borderRadius: radius.pill, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, marginRight: 8 },
-  chipOn: { backgroundColor: colors.pink, borderColor: colors.pink },
-  input: { backgroundColor: colors.card, color: colors.text, borderRadius: radius.pill, paddingLeft: 18, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginBottom: 8 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  chip: { paddingHorizontal: 14, minHeight: 36, justifyContent: 'center', borderRadius: radius.pill, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
+  chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  chipText: { color: colors.text, fontSize: 14, fontWeight: '500' },
+  chipOnText: { color: colors.onAccent, fontWeight: '700' },
+  input: { backgroundColor: colors.card, color: colors.text, borderRadius: 12, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 14, minHeight: 44, paddingVertical: 10, fontSize: 15, marginBottom: 8 },
   placeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
-  resume: { marginTop: 16, borderColor: colors.line },
-  savedRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16, borderRadius: radius.card, backgroundColor: colors.card, marginBottom: 10, ...softShadow },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chipOnText: { color: colors.onPink, fontWeight: '700' },
-  wishRow: { flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'center' },
-  wishButton: { backgroundColor: colors.accent, borderRadius: radius.pill, paddingHorizontal: 20, minHeight: 44, justifyContent: 'center' },
-  wishButtonOff: { opacity: 0.5 },
-  buttonTextSmall: { color: colors.onAccent, fontSize: 15, fontWeight: '800' },
-  footer: { paddingHorizontal: 20, paddingTop: 10, backgroundColor: colors.bg },
-  button: { backgroundColor: colors.accentStrong, borderRadius: radius.pill, ...softShadow, shadowOpacity: 0.25, paddingVertical: 16, alignItems: 'center', marginBottom: 8 },
+  resume: { marginTop: 16 },
+  savedRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: radius.tile, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, marginBottom: 8 },
+  wishRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  wishButton: { backgroundColor: colors.accent, borderRadius: 12, paddingHorizontal: 18, minHeight: 44, justifyContent: 'center' },
+  wishButtonOff: { backgroundColor: colors.disabled },
+  buttonTextSmall: { color: colors.onAccent, fontSize: 15, fontWeight: '700' },
+  footer: { paddingHorizontal: 20, paddingTop: 10, backgroundColor: colors.bg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  button: { backgroundColor: colors.accentStrong, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 8 },
   buttonOff: { backgroundColor: colors.disabled },
   buttonText: { color: colors.onAccent, fontSize: 17, fontWeight: '800' },
 });
