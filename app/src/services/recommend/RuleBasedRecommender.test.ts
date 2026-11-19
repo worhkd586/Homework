@@ -3,7 +3,7 @@ import type { CourseRequest, Place } from '../../domain/types';
 import { MockPlaceProvider } from '../places/MockPlaceProvider';
 import { StraightLineRouteProvider } from '../places/StraightLineRouteProvider';
 import { PLACES } from '../places/mockData';
-import { RuleBasedRecommender, isOpenDuring } from './RuleBasedRecommender';
+import { RuleBasedRecommender, isOpenDuring, popularityPoints } from './RuleBasedRecommender';
 
 const recommender = new RuleBasedRecommender(new MockPlaceProvider(), new StraightLineRouteProvider());
 const byName = (name: string): Place => {
@@ -318,5 +318,17 @@ describe('date log (데이트 로그)', () => {
     expect(withLike.find((s) => s.place.id === pick.id)!.reason).toContain('전에 좋았던 곳');
     const withDislike = await recommender.suggestStops({ ...first, request: { ...first.request, disliked: [pick.id] } }, 1, { limit: 50 });
     expect(withDislike.some((s) => s.place.id === pick.id)).toBe(false);
+  });
+});
+
+describe('popularityPoints', () => {
+  const base = PLACES[0];
+  it('후기가 10배 많으면 20점 더 준다 (멀리 있어도 후기 많은 곳이 앞선다)', () => {
+    const few = popularityPoints({ ...base, reviewCount: 99 });
+    const many = popularityPoints({ ...base, reviewCount: 9999 });
+    expect(Math.round(many - few)).toBe(40);
+  });
+  it('후기 수가 없으면 별점으로 계산한다', () => {
+    expect(popularityPoints({ ...base, reviewCount: undefined, rating: 4.5 })).toBe(90);
   });
 });

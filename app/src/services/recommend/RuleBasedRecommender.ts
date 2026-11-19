@@ -202,7 +202,7 @@ export class RuleBasedRecommender implements CourseRecommender {
           const toNext = nextPin ? (await this.routes.estimateTravel(place.location, nextPin.pin.place.location, mode)).minutes : 0;
           const prefHits = place.tags.filter((t) => request.preferences.includes(t)).length + (matchesKeyword(place, request.keywords) ? 2 : 0);
           const score =
-            place.rating * 20 +
+            popularityPoints(place) +
             (isFlagship(place) ? 25 : 0) +
             prefHits * 8 +
             prefScore(place, request.prefs).score +
@@ -300,7 +300,7 @@ export class RuleBasedRecommender implements CourseRecommender {
       const pref = prefScore(candidate, request.prefs);
       const wished = matchesKeyword(candidate, request.keywords);
       const score =
-        candidate.rating * 20 +
+        popularityPoints(candidate) +
         (isFlagship(candidate) ? 25 : 0) +
         (usedCategories.has(candidate.category) ? 0 : 10) +
         (wished ? 16 : 0) +
@@ -410,6 +410,15 @@ export function matchesTheme(place: Place, words: string[]): boolean {
 }
 
 /** 화면에 보일 인기 표시: 후기 수를 알면 후기 수, 모르면 점수 */
+/**
+ * 추천 점수에서 인기(후기 수) 몫. 후기가 10배 많을 때마다 20점 (도보 약 13분 거리만큼).
+ * 실제 데이터: 후기 10개 ≈ 91점, 1천 개 ≈ 130점, 1만 개 ≈ 150점. 후기 수가 없는 예시 데이터는 별점 × 20
+ */
+export function popularityPoints(place: Place): number {
+  if (place.reviewCount === undefined) return place.rating * 20;
+  return 70 + Math.log10(place.reviewCount + 1) * 20;
+}
+
 export function popularityLabel(place: Place): string {
   if (place.reviewCount === undefined) return `★${place.rating.toFixed(1)}`;
   const n = place.reviewCount;

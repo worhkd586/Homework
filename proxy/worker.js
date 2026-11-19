@@ -83,6 +83,49 @@ export async function findOriginal(env, query, postUrl) {
   return best?.image_url ?? null;
 }
 
+/** 글 페이지 주소 (네이버 블로그는 사진 정보가 있는 모바일 페이지로) */
+export function postPageUrl(postUrl) {
+  const safe = safeImageUrl(postUrl);
+  if (!safe) return null;
+  const m = safe.match(/^https?:\/\/(?:m\.)?blog\.naver\.com\/([\w-]+)\/(\d+)/);
+  return m ? `https://m.blog.naver.com/${m[1]}/${m[2]}` : safe;
+}
+
+/** HTML에서 og:image 주소를 꺼낸다 (링크 미리보기용으로 글쓴이가 공개한 대표 사진) */
+export function ogImage(html) {
+  const tag = String(html ?? '').match(/<meta[^>]+property=["']og:image["'][^>]*>/i)?.[0];
+  const content = tag?.match(/content=["']([^"']+)["']/i)?.[1];
+  if (!content) return null;
+  return safeImageUrl(content.replace(/&amp;/g, '&'));
+}
+
+/** 네이버 사진 서버는 type=w숫자로 크기를 고른다. 작으면 가로 800으로 */
+export function upsize(url) {
+  if (!/\.pstatic\.net\//.test(url)) return url;
+  const w = Number(url.match(/[?&]type=w(\d+)/)?.[1] ?? 0);
+  if (w >= 400) return url;
+  const u = new URL(url);
+  u.searchParams.set('type', 'w800');
+  return u.toString();
+}
+
+/** 이미지 검색에 원본이 없을 때: 그 글 페이지의 og:image */
+export async function findOgImage(postUrl) {
+  const page = postPageUrl(postUrl);
+  if (!page) return null;
+  try {
+    const res = await fetch(page, {
+      headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148' },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!res.ok) return null;
+    const found = ogImage((await res.text()).slice(0, 300000));
+    return found ? upsize(found) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** 비교용: 공백·기호·괄호를 빼고 소문자로 */
 export function squash(text) {
   return String(text ?? '')
@@ -198,7 +241,7 @@ async function handle(url, env) {
     const name = (url.searchParams.get('name') ?? q.split(' ').slice(0, -1).join(' ') ?? q).trim() || q;
     const doc = await findPhoto(env, q, name);
     // 고화질: 같은 글에서 나온 원본 사진을 이미지 검색에서 찾아 /img로 대신 받아 준다
-    const original = doc ? await findOriginal(env, q, doc.url) : null;
+    const original = doc ? ((await findOriginal(env, q, doc.url)) ?? (await findOgImage(doc.url))) : null;
     const large = original ? `${url.origin}/img?u=${encodeURIComponent(original)}` : null;
     return json({ url: doc?.thumbnail ?? null, large, source: doc?.url ?? null }, 200, { 'Cache-Control': `public, max-age=${DAY * 7}` });
   }

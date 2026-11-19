@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { coreName, lookupName, MAX_REVIEW_LOOKUPS, safeImageUrl, samePost, squash } from './worker.js';
+import worker, { coreName, lookupName, MAX_REVIEW_LOOKUPS, ogImage, postPageUrl, safeImageUrl, samePost, squash, upsize } from './worker.js';
 
 const env = { KAKAO_REST_KEY: 'test-key' };
 const ctx = { waitUntil: () => {} };
@@ -134,5 +134,24 @@ describe('proxy', () => {
     const bad = await call('/search?q=카페');
     expect(bad.status).toBe(502);
     expect((await bad.json()).error).toContain('401');
+  });
+});
+
+describe('og:image fallback', () => {
+  it('네이버 블로그 글은 모바일 페이지에서 찾는다', () => {
+    expect(postPageUrl('https://blog.naver.com/abc_1/224397706672')).toBe('https://m.blog.naver.com/abc_1/224397706672');
+    expect(postPageUrl('https://foo.tistory.com/12')).toBe('https://foo.tistory.com/12');
+    expect(postPageUrl('http://127.0.0.1/x')).toBeNull();
+  });
+  it('og:image를 꺼내고 &amp;를 푼다', () => {
+    const html = '<head><meta property="og:title" content="t"><meta property="og:image" content="https://mblogthumb-phinf.pstatic.net/a/IMG.jpg?type=w2&amp;x=1"/></head>';
+    expect(ogImage(html)).toBe('https://mblogthumb-phinf.pstatic.net/a/IMG.jpg?type=w2&x=1');
+    expect(ogImage('<meta property="og:image" content="http://localhost/a.jpg">')).toBeNull();
+    expect(ogImage('<p>no meta</p>')).toBeNull();
+  });
+  it('작은 네이버 사진은 가로 800으로 키운다', () => {
+    expect(upsize('https://mblogthumb-phinf.pstatic.net/a/IMG.jpg?type=w2')).toBe('https://mblogthumb-phinf.pstatic.net/a/IMG.jpg?type=w800');
+    expect(upsize('https://postfiles.pstatic.net/a/IMG.jpg?type=w966')).toBe('https://postfiles.pstatic.net/a/IMG.jpg?type=w966');
+    expect(upsize('https://example.com/a.jpg')).toBe('https://example.com/a.jpg');
   });
 });
