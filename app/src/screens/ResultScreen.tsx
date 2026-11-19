@@ -1,5 +1,6 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
+import Text from '../ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Course, Place } from '../domain/types';
 import { CATEGORY_LABEL, formatDuration, formatMinute, getTimeSlot, isSlotRange } from '../domain/timeSlots';
@@ -37,6 +38,17 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
   const [query, setQuery] = useState('');
   const [places, setPlaces] = useState<Place[]>([]);
   const [busy, setBusy] = useState(false);
+  // 일정을 탭하면 열리는 패널이 화면 밖에 열리지 않도록, 그 일정 위치로 스크롤한다
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  const listY = useRef(0);
+  const stopY = useRef<number[]>([]);
+
+  useEffect(() => {
+    if (!panel || panel.kind === 'add') return;
+    const y = listY.current + (stopY.current[panel.index] ?? 0) - 12;
+    const t = setTimeout(() => scrollRef.current?.scrollTo({ y: Math.max(0, y), animated: true }), 50);
+    return () => clearTimeout(t);
+  }, [panel?.kind, panel?.index]);
 
   useEffect(() => {
     placeProvider.listPlaces(course.request.regionId).then(setPlaces);
@@ -80,7 +92,7 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
         <Pressable style={[styles.choice, picking && styles.choiceOn]} onPress={() => setPicking(!picking)}>
           <Text style={styles.choiceText}>📍 직접 고르기</Text>
         </Pressable>
-        <Pressable onPress={() => setPanel(null)} hitSlop={10}>
+        <Pressable onPress={() => setPanel(null)} hitSlop={12} accessibilityLabel="닫기">
           <Text style={styles.muted}>✕</Text>
         </Pressable>
       </View>
@@ -163,7 +175,7 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Pressable onPress={onBack} hitSlop={12}>
           <Text style={styles.back}>‹ 조건 바꾸기 · 내 코스</Text>
         </Pressable>
@@ -212,7 +224,7 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
           </View>
         ))}
 
-        <View style={{ marginTop: 20 }}>
+        <View style={{ marginTop: 20 }} onLayout={(e) => (listY.current = e.nativeEvent.layout.y)}>
           {course.stops.length === 0 && (
             <>
               <Text style={styles.muted}>일정이 모두 비었어요. 새로 추가해 보세요.</Text>
@@ -224,7 +236,7 @@ export default function ResultScreen({ options, note, selected, isSaved, onSelec
             const editing = panel !== null && panel.kind !== 'add' && panel.index === i;
             return (
               <Fragment key={s.place.id}>
-                <View style={styles.stop}>
+                <View style={styles.stop} onLayout={(e) => (stopY.current[i] = e.nativeEvent.layout.y)}>
                   <View style={styles.time}>
                     <Text style={styles.timeMain}>{formatMinute(s.arriveMinute)}</Text>
                     <Text style={styles.small}>{formatMinute(s.leaveMinute)}</Text>
@@ -286,7 +298,7 @@ const styles = StyleSheet.create({
   courseTitle: { color: colors.text, fontSize: 20, fontWeight: '800', marginTop: 22 },
   text: { color: colors.text, fontSize: 15 },
   muted: { color: colors.muted, fontSize: 15, marginTop: 4 },
-  small: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  small: { color: colors.muted, fontSize: 13, marginTop: 2 },
   warning: { marginTop: 14, padding: 12, borderRadius: 10, backgroundColor: colors.warnSoft },
   warningText: { color: colors.warn, fontSize: 13 },
   stop: { flexDirection: 'row', gap: 12 },
@@ -298,27 +310,27 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 24 },
   optionPhotos: { flexDirection: 'row', gap: 4 },
   name: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  editHint: { color: colors.muted, fontSize: 12, marginTop: 2 },
-  badge: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, overflow: 'hidden', backgroundColor: colors.accentSoft, color: '#ff9aac', fontSize: 12 },
+  editHint: { color: colors.muted, fontSize: 13, marginTop: 2 },
+  badge: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, overflow: 'hidden', backgroundColor: colors.accentSoft, color: '#ff9aac', fontSize: 13 },
   reason: { color: '#cfcfd6', fontSize: 13, marginTop: 8 },
-  actions: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  action: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: '#26262f' },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  action: { flexGrow: 1, flexBasis: '45%', minHeight: 44, justifyContent: 'center', borderRadius: 10, alignItems: 'center', backgroundColor: '#26262f' },
   actionText: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: '#26262f', borderWidth: 1, borderColor: colors.line, marginRight: 8 },
+  chip: { paddingHorizontal: 14, minHeight: 44, justifyContent: 'center', borderRadius: 999, backgroundColor: '#26262f', borderWidth: 1, borderColor: colors.line, marginRight: 8 },
   chipOn: { backgroundColor: colors.text, borderColor: colors.text },
   leg: { color: colors.muted, fontSize: 13, marginLeft: 64, paddingTop: 10 },
-  addButton: { marginLeft: 64, paddingVertical: 8 },
+  addButton: { marginLeft: 64, minHeight: 44, justifyContent: 'center' },
   addButtonText: { color: colors.accent, fontSize: 13, fontWeight: '700' },
   panel: { marginLeft: 64, marginVertical: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.accentSoft },
   choices: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  choice: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: '#26262f' },
-  choicePrimary: { backgroundColor: colors.accent },
+  choice: { flex: 1, minHeight: 44, justifyContent: 'center', borderRadius: 10, alignItems: 'center', backgroundColor: '#26262f' },
+  choicePrimary: { backgroundColor: colors.accentStrong },
   choiceOn: { borderWidth: 1, borderColor: colors.text },
   choiceText: { color: colors.text, fontSize: 14, fontWeight: '700' },
   input: { backgroundColor: '#26262f', color: colors.text, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginBottom: 6 },
   placeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   footer: { paddingHorizontal: 20, paddingTop: 10, backgroundColor: colors.bg },
-  button: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginBottom: 8 },
+  button: { backgroundColor: colors.accentStrong, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginBottom: 8 },
   buttonText: { color: '#fff', fontSize: 17, fontWeight: '800' },
   savedNote: { color: colors.ok, fontSize: 14, textAlign: 'center', paddingVertical: 14 },
 });

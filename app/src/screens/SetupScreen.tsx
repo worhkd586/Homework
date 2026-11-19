@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import Text from '../ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Course, PinnedPlace, Place, Region, TimeSlotId } from '../domain/types';
 import { MOODS, type MoodId } from '../domain/moods';
@@ -19,6 +20,9 @@ export interface CourseOptions {
 }
 
 const AUTO = 'auto';
+/** 접힌 상태에서 보이는 지역 수 (✨추천 타일과 함께 2칸 × 4줄) */
+const COLLAPSED_REGIONS = 7;
+const GRID_COLUMNS = 5;
 /** 범위 끝의 자정은 00:00 대신 24:00으로 */
 const clock = (m: number) => (m === 24 * 60 ? '24:00' : formatMinute(m));
 
@@ -40,6 +44,10 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
   const [regions, setRegions] = useState<Region[]>([]);
   const [regionId, setRegionId] = useState<string>();
   const [group, setGroup] = useState<'서울' | '경기'>('서울');
+  /** 지역은 처음엔 몇 곳만 보이고 '더 보기'로 펼친다 (화면을 짧게) */
+  const [allRegions, setAllRegions] = useState(false);
+  /** 30분 단위 시간표는 '직접 고르기'를 눌렀을 때만 연다 */
+  const [showGrid, setShowGrid] = useState(false);
   // 언제: 시작~끝 범위 (30분 단위). 시간대 칩은 빠른 선택용
   const [range, setRange] = useState({ start: 17 * 60, end: 22 * 60 });
   /** 범위 고르기 중: 시작만 찍고 끝을 기다리는 중이면 true */
@@ -90,11 +98,24 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
     return out;
   }, [range]);
 
-  const gridTimes = useMemo(() => {
-    const out: number[] = [];
-    for (let m = RANGE_FIRST; m <= RANGE_LAST; m += 30) out.push(m);
-    return out;
+  // 시간표: 5칸씩 한 줄. 마지막 줄도 칸 폭이 같도록 빈 칸(null)으로 채운다
+  const gridRows = useMemo(() => {
+    const times: number[] = [];
+    for (let m = RANGE_FIRST; m <= RANGE_LAST; m += 30) times.push(m);
+    const rows: (number | null)[][] = [];
+    for (let i = 0; i < times.length; i += GRID_COLUMNS) {
+      const row: (number | null)[] = times.slice(i, i + GRID_COLUMNS);
+      while (row.length < GRID_COLUMNS) row.push(null);
+      rows.push(row);
+    }
+    return rows;
   }, []);
+
+  const groupRegions = regions.filter((r) => (r.group ?? '서울') === group);
+  const shownRegions = allRegions
+    ? groupRegions
+    : groupRegions.filter((r, i) => i < COLLAPSED_REGIONS || r.id === regionId);
+  const hiddenCount = groupRegions.length - shownRegions.length;
 
   function changeRange(start: number, end: number) {
     setRange({ start, end });
@@ -233,7 +254,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
         </View>
         <View style={styles.wishRow}>
           <TextInput
-            style={[styles.input, { flex: 1, marginBottom: 0 }]}
+            style={[styles.input, { flex: 1, minWidth: 0, marginBottom: 0, minHeight: 44 }]}
             placeholder="직접 입력 (예: 도자기, 볼링, 한강)"
             placeholderTextColor={colors.muted}
             value={wish}
@@ -262,7 +283,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
               기분에 맞는 동네로
             </Text>
           </Pressable>
-          {regions.filter((r) => (r.group ?? '서울') === group).map((r) => (
+          {shownRegions.map((r) => (
             <Pressable key={r.id} style={[styles.tile, regionId === r.id && styles.selected]} onPress={() => setRegionId(r.id)}>
               <Text style={styles.tileTitle}>{r.name}</Text>
               <Text style={styles.small} numberOfLines={1}>
@@ -271,6 +292,11 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
             </Pressable>
           ))}
         </View>
+        {(hiddenCount > 0 || allRegions) && (
+          <Pressable style={styles.more} onPress={() => setAllRegions(!allRegions)}>
+            <Text style={styles.moreText}>{allRegions ? '접기 ▴' : `동네 ${hiddenCount}곳 더 보기 ▾`}</Text>
+          </Pressable>
+        )}
 
         <Text style={styles.h2}>언제 만나요?</Text>
         <View style={styles.row}>
@@ -290,24 +316,38 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
               ? `${formatMinute(range.start)} ~ 끝 시간을 눌러 주세요`
               : `${clock(range.start)} ~ ${clock(range.end)} · ${formatDuration(range.end - range.start)}`}
           </Text>
+          {!pickingEnd && (
+            <Pressable style={styles.gridToggle} onPress={() => setShowGrid(!showGrid)} hitSlop={6}>
+              <Text style={styles.moreText}>{showGrid ? '접기 ▴' : '직접 고르기 ▾'}</Text>
+            </Pressable>
+          )}
         </View>
-        <Text style={styles.small}>직접 고르려면 아래에서 시작 → 끝 순서로 눌러요 (30분 단위)</Text>
-        <View style={styles.timeGrid}>
-          {gridTimes.map((m) => {
-            const inRange = !pickingEnd && m >= range.start && m <= range.end;
-            const edge = m === range.start || (!pickingEnd && m === range.end);
-            return (
-              <Pressable
-                key={m}
-                style={[styles.timeCell, inRange && styles.timeCellIn, edge && styles.timeCellEdge]}
-                onPress={() => pickTime(m)}
-                accessibilityLabel={`${clock(m)} 선택`}
-              >
-                <Text style={[styles.timeCellText, edge && { color: colors.bg, fontWeight: '700' }]}>{clock(m)}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        {(showGrid || pickingEnd) && (
+          <>
+            <Text style={styles.small}>시작 → 끝 순서로 눌러요 (30분 단위)</Text>
+            <View style={styles.timeGrid}>
+              {gridRows.map((row, ri) => (
+                <View key={ri} style={styles.timeRow}>
+                  {row.map((m, ci) => {
+                    if (m === null) return <View key={`empty-${ci}`} style={styles.timeCellEmpty} />;
+                    const inRange = !pickingEnd && m >= range.start && m <= range.end;
+                    const edge = m === range.start || (!pickingEnd && m === range.end);
+                    return (
+                      <Pressable
+                        key={m}
+                        style={[styles.timeCell, inRange && styles.timeCellIn, edge && styles.timeCellEdge]}
+                        onPress={() => pickTime(m)}
+                        accessibilityLabel={`${clock(m)} 선택`}
+                      >
+                        <Text style={[styles.timeCellText, edge && { color: colors.bg, fontWeight: '700' }]}>{clock(m)}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+          </>
+        )}
 
         <Text style={styles.h2}>꼭 갈 곳 있어요? (선택)</Text>
         {!regionId || regionId === AUTO ? (
@@ -318,7 +358,7 @@ export default function SetupScreen({ saved, hasCurrent, onResume, onOpenSaved, 
               <Text style={styles.tileTitle}>
                 {CATEGORY_EMOJI[mustGo.place.category]} {mustGo.place.name}
               </Text>
-              <Pressable hitSlop={12} onPress={() => setMustGo(null)}>
+              <Pressable hitSlop={12} onPress={() => setMustGo(null)} accessibilityLabel={`${mustGo.place.name} 빼기`}>
                 <Text style={styles.muted}>✕</Text>
               </Pressable>
             </View>
@@ -393,26 +433,31 @@ const styles = StyleSheet.create({
   h2: { fontSize: 19, fontWeight: '700', color: colors.text, marginTop: 28, marginBottom: 12 },
   text: { color: colors.text, fontSize: 15 },
   muted: { color: colors.muted, fontSize: 15, marginTop: 4 },
-  small: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  small: { color: colors.muted, fontSize: 13, marginTop: 2 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   tile: { width: '48%', flexGrow: 1, padding: 14, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent' },
   tileTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   selected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   row: { flexDirection: 'row', gap: 8 },
   rangeText: { color: colors.text, fontSize: 17, fontWeight: '700' },
-  timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
-  timeCell: { width: '18%', flexGrow: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center', backgroundColor: colors.card },
+  timeGrid: { gap: 6, marginTop: 10 },
+  timeRow: { flexDirection: 'row', gap: 6 },
+  timeCell: { flex: 1, minHeight: 44, justifyContent: 'center', borderRadius: 8, alignItems: 'center', backgroundColor: colors.card },
+  timeCellEmpty: { flex: 1 },
   timeCellIn: { backgroundColor: colors.accentSoft },
   timeCellEdge: { backgroundColor: colors.accent },
-  timeCellText: { color: colors.text, fontSize: 13 },
-  groupTab: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
+  timeCellText: { color: colors.text, fontSize: 14 },
+  more: { minHeight: 44, justifyContent: 'center', alignItems: 'center', marginTop: 8, borderRadius: 12, borderWidth: 1, borderColor: colors.line },
+  moreText: { color: colors.text, fontSize: 14, fontWeight: '700' },
+  gridToggle: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: colors.line },
+  groupTab: { paddingHorizontal: 20, minHeight: 44, justifyContent: 'center', borderRadius: 999, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
   groupTabOn: { backgroundColor: colors.text, borderColor: colors.text },
   groupTabText: { color: colors.text, fontSize: 14, fontWeight: '700' },
   slot: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent' },
   slotEmoji: { fontSize: 22 },
   card: { padding: 14, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1.5, borderColor: 'transparent' },
   between: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, marginRight: 8 },
+  chip: { paddingHorizontal: 14, minHeight: 44, justifyContent: 'center', borderRadius: 999, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, marginRight: 8 },
   chipOn: { backgroundColor: colors.text, borderColor: colors.text },
   input: { backgroundColor: colors.card, color: colors.text, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginBottom: 8 },
   placeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
@@ -421,10 +466,10 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chipOnText: { color: colors.bg, fontWeight: '700' },
   wishRow: { flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'center' },
-  wishButton: { backgroundColor: colors.accent, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 11 },
+  wishButton: { backgroundColor: colors.accentStrong, borderRadius: 10, paddingHorizontal: 16, minHeight: 44, justifyContent: 'center' },
   buttonTextSmall: { color: '#fff', fontSize: 15, fontWeight: '800' },
   footer: { paddingHorizontal: 20, paddingTop: 10, backgroundColor: colors.bg },
-  button: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginBottom: 8 },
+  button: { backgroundColor: colors.accentStrong, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginBottom: 8 },
   buttonOff: { backgroundColor: '#3a3a44' },
   buttonText: { color: '#fff', fontSize: 17, fontWeight: '800' },
 });

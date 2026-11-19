@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
+import Text from './Text';
 import type { Place } from '../domain/types';
 import { CATEGORY_EMOJI } from '../domain/timeSlots';
 import { placeProvider } from '../lib/services';
