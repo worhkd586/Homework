@@ -174,13 +174,16 @@ export async function recommendOptions(
       keywords: activities.flatMap((a) => a.keywords),
       wishes: activities.filter((a) => a.match?.length).map((a) => ({ category: a.category, match: a.match! })),
       avoidPlaceIds: [...used],
+      // 앞 코스에 나온 곳은 다른 코스에 다시 넣지 않는다 (같은 곳은 한 코스에만)
+      excludePlaceIds: [...(base.excludePlaceIds ?? []), ...used],
     };
     const key = (c: Course) => c.stops.map((s) => s.place.id).join(',');
     let course = await recommender.recommend(request);
-    // 앞 코스와 똑같이 나오면, 이미 쓴 곳은 아예 빼고 다시 짠다. 그래도 같거나 너무 짧으면 그 코스는 건너뛴다.
-    if (courses.some((c) => key(c) === key(course))) {
-      course = await recommender.recommend({ ...request, excludePlaceIds: [...(base.excludePlaceIds ?? []), ...used] });
-      if (course.stops.length < 2 || courses.some((c) => key(c) === key(course))) continue;
+    // 겹치지 않는 곳으로는 제대로 된 코스가 안 나오면 (너무 짧거나, 하고 싶은 걸 못 넣으면) 그 안은 빼고 보여 준다
+    if (courses.length) {
+      const tooShort = course.stops.length < Math.max(2, Math.ceil(courses[0].stops.length * 0.6));
+      const missesWish = activities.some((a) => !course.stops.some((st) => st.place.category === a.category));
+      if (tooShort || missesWish || courses.some((c) => key(c) === key(course))) continue;
     }
     // 하고 싶은 것으로 흐름을 바꿨으면, 템플릿 이름 대신 실제 순서를 이름으로 쓴다 (예: 전시 → 식사 → 체험)
     if (activities.length > 0) {
