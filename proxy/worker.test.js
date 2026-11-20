@@ -198,10 +198,10 @@ describe('/buzz', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     const body = await (await call('/buzz?q=행궁동')).json();
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenCalledTimes(8);
     expect(body.posts[0].t).toContain('행궁동 데이트 코스 정지영커피로스터즈');
-    expect(body.posts.filter((p) => p.t.includes('데이트 코스'))).toHaveLength(1);
-    expect(body.posts.length).toBe(4);
+    expect(body.posts.filter((p) => p.t.includes('데이트 코스') && p.w === '데이트')).toHaveLength(1);
+    expect(body.posts.filter((p) => p.w === '블루리본').length).toBeGreaterThan(0);
     expect((await call('/buzz?q=')).status).toBe(400);
   });
 });

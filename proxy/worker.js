@@ -181,7 +181,7 @@ export function lookupName(doc) {
 }
 
 /** /buzz: 해시태그처럼 동네 이름과 함께 검색할 말 */
-export const BUZZ_WORDS = ['데이트', '핫플', '가볼만한곳'];
+export const BUZZ_WORDS = ['데이트', '핫플', '가볼만한곳', '블루리본'];
 
 export function stripTags(text) {
   return String(text ?? '').replace(/<[^>]+>/g, '').replace(/&[a-z#0-9]+;/gi, ' ');
@@ -264,7 +264,7 @@ async function handle(url, env) {
       BUZZ_WORDS.flatMap((w) =>
         [1, 2].map((page) =>
           kakaoGet(env, `${DAUM}/blog?${new URLSearchParams({ query: `${q} ${w}`, size: '50', page: String(page), sort: 'accuracy' })}`)
-            .then((d) => d.documents ?? [])
+            .then((d) => (d.documents ?? []).map((doc) => ({ ...doc, w })))
             .catch(() => []),
         ),
       ),
@@ -272,9 +272,11 @@ async function handle(url, env) {
     const seen = new Set();
     const posts = [];
     for (const d of lists.flat()) {
-      if (!d.url || seen.has(d.url)) continue;
-      seen.add(d.url);
-      posts.push({ t: `${stripTags(d.title)} ${stripTags(d.contents)}`.slice(0, 400), d: (d.datetime ?? '').slice(0, 10) });
+      const key = `${d.w}|${d.url}`;
+      if (!d.url || seen.has(key)) continue;
+      seen.add(key);
+      // w: 어떤 말로 찾은 글인지 ('블루리본' 글은 따로 센다)
+      posts.push({ t: `${stripTags(d.title)} ${stripTags(d.contents)}`.slice(0, 400), d: (d.datetime ?? '').slice(0, 10), w: d.w });
     }
     return json({ q, posts }, 200, { 'Cache-Control': `public, max-age=${DAY}` });
   }

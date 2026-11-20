@@ -184,4 +184,10 @@ describe('hashtag hot spots (블로그 글로 대신)', () => {
     expect(a.buzzTag).toBe('행궁동');
     expect(b.buzz).toBeUndefined();
   });
+
+  it('counts Blue Ribbon posts separately', () => {
+    const [a] = withBuzz([p('정지영커피로스터즈 행궁점')], [{ tag: '행궁동', posts: [], ribbon: ['행궁동 블루리본 정지영커피로스터즈', '블루리본 서베이 정지영커피로스터즈'] }]);
+    expect(a.ribbon).toBe(2);
+    expect(a.buzz).toBeUndefined();
+  });
 });

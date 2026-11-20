@@ -444,7 +444,14 @@ export function matchesTheme(place: Place, words: string[]): boolean {
 export function popularityPoints(place: Place): number {
   const reviews = trustedReviews(place);
   if (reviews === undefined) return place.rating * 20;
-  return 70 + Math.log10(reviews + 1) * 20 + (place.recentCount ?? 0) * 0.8 + buzzPoints(place);
+  return 70 + Math.log10(reviews + 1) * 20 + (place.recentCount ?? 0) * 0.8 + buzzPoints(place) + ribbonPoints(place);
+}
+
+/** 블루리본이 언급된 글에 자주 나오는 밥집·카페·술집 (2개 ≈ 16점, 최대 30점). 선정 여부를 확인한 건 아니라 가산점만 */
+export function ribbonPoints(place: Place): number {
+  const n = place.ribbon ?? 0;
+  if (n < 2 || !['restaurant', 'cafe', 'bar'].includes(place.category)) return 0;
+  return Math.min(30, Math.log2(n + 1) * 10);
 }
 
 /** 해시태그 핫플 점수: 동네 데이트·핫플 글에 많이 나올수록 (2개 ≈ 16점, 8개 ≈ 32점, 최대 40점) */
@@ -461,7 +468,10 @@ const shortCount = (n: number) =>
  * 최근 글 수는 인기 있는 곳 대부분이 최대치(50)라 표시하지 않고 점수에만 쓴다 (요즘 글이 뜸한 곳이 밀린다).
  */
 export function popularityLabel(place: Place): string {
-  const tag = (place.buzz ?? 0) >= 2 ? `#${place.buzzTag} 핫플 글 ${place.buzz}` : '';
+  const tag = [
+    (place.buzz ?? 0) >= 2 ? `#${place.buzzTag} 핫플 글 ${place.buzz}` : '',
+    ribbonPoints(place) > 0 ? `블루리본 언급 글 ${place.ribbon}` : '',
+  ].filter(Boolean).join(' · ');
   if (place.reviewCount === undefined) return [place.pick ? '데이트 명소' : `★${place.rating.toFixed(1)}`, tag].filter(Boolean).join(' · ');
   return [`후기 ${shortCount(place.reviewCount)}`, tag].filter(Boolean).join(' · ');
 }

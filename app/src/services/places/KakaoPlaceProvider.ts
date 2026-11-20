@@ -213,12 +213,16 @@ export class KakaoPlaceProvider implements PlaceProvider {
   }
 
   /** 동네 해시태그 글 모으기 (예전 프록시면 /buzz가 없어서 빈 목록) */
-  private async findBuzz(region: Region): Promise<Array<{ tag: string; posts: string[] }>> {
+  private async findBuzz(region: Region): Promise<BuzzTag[]> {
     const found = await Promise.allSettled(
-      hashtagsOf(region).map(async (tag) => ({
-        tag,
-        posts: (await this.getJson<{ posts?: Array<{ t: string }> }>('/buzz', { q: tag })).posts?.map((p) => p.t) ?? [],
-      })),
+      hashtagsOf(region).map(async (tag) => {
+        const posts = (await this.getJson<{ posts?: Array<{ t: string; w?: string }> }>('/buzz', { q: tag })).posts ?? [];
+        return {
+          tag,
+          posts: posts.filter((p) => p.w !== '블루리본').map((p) => p.t),
+          ribbon: posts.filter((p) => p.w === '블루리본').map((p) => p.t),
+        };
+      }),
     );
     return found.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
   }
@@ -342,18 +346,29 @@ export function buzzKey(place: Place): string | undefined {
  * 해시태그처럼: 동네 해시태그 글(‘행궁동 데이트’·‘행궁동 핫플’ 등)에 이름이 나온 글 수를 센다.
  * 인스타그램 해시태그 검색은 무료 공개 API가 없고 긁어 오는 건 약관 위반이라, 같은 카카오 키로 블로그 글을 쓴다.
  */
-export function withBuzz(places: Place[], tags: Array<{ tag: string; posts: string[] }>): Place[] {
+export interface BuzzTag {
+  tag: string;
+  /** '동네 데이트/핫플/가볼만한곳' 글 */
+  posts: string[];
+  /** '동네 블루리본' 글 */
+  ribbon?: string[];
+}
+
+export function withBuzz(places: Place[], tags: BuzzTag[]): Place[] {
   if (!tags.length) return places;
-  const texts = tags.map(({ tag, posts }) => ({ tag, posts: posts.map(squash) }));
+  const texts = tags.map(({ tag, posts, ribbon }) => ({ tag, posts: posts.map(squash), ribbon: (ribbon ?? []).map(squash) }));
   return places.map((p) => {
     const key = buzzKey(p);
     if (!key) return p;
     let best: { tag: string; n: number } | undefined;
-    for (const { tag, posts } of texts) {
+    let ribbon = 0;
+    for (const { tag, posts, ribbon: r } of texts) {
       const n = posts.filter((t) => t.includes(key)).length;
       if (n && (!best || n > best.n)) best = { tag, n };
+      ribbon = Math.max(ribbon, r.filter((t) => t.includes(key)).length);
     }
-    return best ? { ...p, buzz: best.n, buzzTag: best.tag } : p;
+    const out = best ? { ...p, buzz: best.n, buzzTag: best.tag } : p;
+    return ribbon ? { ...out, ribbon } : out;
   });
 }
 

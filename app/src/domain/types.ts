@@ -57,6 +57,8 @@ export interface Place {
   buzz?: number;
   /** buzz를 센 해시태그 (예: '행궁동') */
   buzzTag?: string;
+  /** '동네 + 블루리본' 블로그 글에 이름이 나온 글 수 (블루리본 선정 여부 자체는 아님) */
+  ribbon?: number;
 }
 
 export type TimeSlotId = 'lunch' | 'afternoon' | 'evening' | 'night';
