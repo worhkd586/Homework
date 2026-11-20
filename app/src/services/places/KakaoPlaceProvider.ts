@@ -1,8 +1,8 @@
 import type { Place, PlaceCategory, Region } from '../../domain/types';
-import { ALL_REGIONS } from '../../domain/regions';
+import { ALL_REGIONS, hashtagsOf } from '../../domain/regions';
 import type { PlaceProvider } from './PlaceProvider';
 import { defaultStayMinutes } from './mockData';
-import { samePlaceFamily } from '../recommend/dateFit';
+import { isGenericName, samePlaceFamily } from '../recommend/dateFit';
 
 /** 프록시(proxy/worker.js)가 돌려주는 카카오 장소 한 건 */
 export interface KakaoDoc {
@@ -208,7 +208,19 @@ export class KakaoPlaceProvider implements PlaceProvider {
     if (!ok.length) throw (lists[0] as PromiseRejectedResult).reason;
     const seen = new Set<string>();
     const base = curate(ok.flatMap((l) => l.value).filter((p) => !seen.has(p.id) && seen.add(p.id)));
-    return withPicks(base, await this.findPicks(region));
+    const [picks, buzz] = await Promise.all([this.findPicks(region), this.findBuzz(region)]);
+    return withBuzz(withPicks(base, picks), buzz);
+  }
+
+  /** 동네 해시태그 글 모으기 (예전 프록시면 /buzz가 없어서 빈 목록) */
+  private async findBuzz(region: Region): Promise<Array<{ tag: string; posts: string[] }>> {
+    const found = await Promise.allSettled(
+      hashtagsOf(region).map(async (tag) => ({
+        tag,
+        posts: (await this.getJson<{ posts?: Array<{ t: string }> }>('/buzz', { q: tag })).posts?.map((p) => p.t) ?? [],
+      })),
+    );
+    return found.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
   }
 
   /** 동네별 데이트 명소를 이름으로 찾는다 (못 찾거나 실패하면 빼고) */
@@ -315,6 +327,34 @@ export function withPicks(base: Place[], picks: Place[]): Place[] {
   const out = base.map((p) => (byId.has(p.id) ? { ...p, pick: true } : p));
   const have = new Set(base.map((p) => p.id));
   return oneOfEachFamily([...out, ...picks.filter((p) => !have.has(p.id) && have.add(p.id))]);
+}
+
+/** 블로그 글에서 찾을 가게 이름: 지점 이름('○○점')을 빼고, 띄어쓰기 없이. 너무 짧거나 흔한 말이면 찾지 않는다 */
+export function buzzKey(place: Place): string | undefined {
+  const words = place.name.trim().split(/\s+/);
+  if (words.length > 1 && /점$/.test(words[words.length - 1])) words.pop();
+  const key = squash(words.join(''));
+  if (key.length < 3 || isGenericName(place)) return undefined;
+  return key;
+}
+
+/**
+ * 해시태그처럼: 동네 해시태그 글(‘행궁동 데이트’·‘행궁동 핫플’ 등)에 이름이 나온 글 수를 센다.
+ * 인스타그램 해시태그 검색은 무료 공개 API가 없고 긁어 오는 건 약관 위반이라, 같은 카카오 키로 블로그 글을 쓴다.
+ */
+export function withBuzz(places: Place[], tags: Array<{ tag: string; posts: string[] }>): Place[] {
+  if (!tags.length) return places;
+  const texts = tags.map(({ tag, posts }) => ({ tag, posts: posts.map(squash) }));
+  return places.map((p) => {
+    const key = buzzKey(p);
+    if (!key) return p;
+    let best: { tag: string; n: number } | undefined;
+    for (const { tag, posts } of texts) {
+      const n = posts.filter((t) => t.includes(key)).length;
+      if (n && (!best || n > best.n)) best = { tag, n };
+    }
+    return best ? { ...p, buzz: best.n, buzzTag: best.tag } : p;
+  });
 }
 
 /**

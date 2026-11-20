@@ -13,7 +13,7 @@ const r = (
   tagline: string,
   strengths: string[],
   radius = 1500,
-): Region => ({ id, name, group, center: { lat, lng }, tagline, strengths, radius, picks: PICKS[id] });
+): Region => ({ id, name, group, center: { lat, lng }, tagline, strengths, radius, picks: PICKS[id], hashtags: HASHTAGS[id] });
 
 /**
  * 동네마다 이름난 데이트 명소. 앱이 카카오에서 이름으로 찾아서(못 찾으면 그냥 넘어감) 후보에 더하고 가산점을 준다.
@@ -61,6 +61,26 @@ const PICKS: Record<string, string[]> = {
   seongsan: ['성산일출봉', '광치기해변', '섭지코지', '우도'],
   hamdeok: ['함덕해수욕장', '월정리해변', '서우봉'],
 };
+
+/** 이름만으로는 해시태그가 어색한 곳 (나머지는 hashtagsOf가 이름에서 만든다) */
+const HASHTAGS: Record<string, string[]> = {
+  suwon: ['행궁동', '행리단길'],
+  'jeju-west': ['오설록', '안덕'],
+  'jeju-city': ['제주시', '탑동'],
+  jamsil: ['석촌호수', '송리단길'],
+  yongsan: ['용리단길', '용산'],
+  itaewon: ['한남동', '이태원'],
+  sinsa: ['가로수길', '신사동'],
+  apgujeong: ['도산공원', '압구정로데오'],
+};
+
+/** 동네 해시태그: '홍대·연남' → 홍대, 연남 · '수원 행궁동'처럼 두 낱말이면 뒤의 것 */
+export function hashtagsOf(region: Region): string[] {
+  if (region.hashtags?.length) return region.hashtags;
+  const base = region.name.replace(/\(.*\)/, '').trim();
+  const parts = base.includes('·') ? base.split('·') : [base.split(/\s+/).pop() ?? base];
+  return parts.map((w) => w.trim()).filter((w) => w.length >= 2).slice(0, 2);
+}
 
 export const ALL_REGIONS: Region[] = [
   // 서울

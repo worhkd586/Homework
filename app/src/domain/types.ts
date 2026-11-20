@@ -26,6 +26,8 @@ export interface Region {
   strengths?: string[];
   /** 이 동네의 이름난 데이트 명소. 카카오에서 이름으로 찾아 후보에 더하고 가산점을 준다 */
   picks?: string[];
+  /** 해시태그처럼 블로그에서 함께 검색할 동네 이름 (없으면 이름에서 만든다) */
+  hashtags?: string[];
 }
 
 export interface Place {
@@ -51,6 +53,10 @@ export interface Place {
   url?: string;
   /** 동네별로 골라 둔 데이트 명소 (regions.ts의 picks) */
   pick?: boolean;
+  /** 동네 해시태그 글(‘행궁동 데이트’, ‘행궁동 핫플’ 등 블로그 글 최대 300개)에 이름이 나온 글 수 */
+  buzz?: number;
+  /** buzz를 센 해시태그 (예: '행궁동') */
+  buzzTag?: string;
 }
 
 export type TimeSlotId = 'lunch' | 'afternoon' | 'evening' | 'night';

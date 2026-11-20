@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FallbackPlaceProvider, KakaoPlaceProvider, categoryOf, type KakaoDoc } from './KakaoPlaceProvider';
-import { ALL_REGIONS } from '../../domain/regions';
+import { FallbackPlaceProvider, KakaoPlaceProvider, buzzKey, categoryOf, withBuzz, type KakaoDoc } from './KakaoPlaceProvider';
+import { ALL_REGIONS, hashtagsOf } from '../../domain/regions';
 import { MockPlaceProvider } from './MockPlaceProvider';
 import { StraightLineRouteProvider } from './StraightLineRouteProvider';
 import { RuleBasedRecommender } from '../recommend/RuleBasedRecommender';
@@ -50,8 +50,8 @@ describe('KakaoPlaceProvider', () => {
     const provider = new KakaoPlaceProvider('https://proxy.test', undefined, f);
     await provider.listPlaces('seongsu');
     await provider.listPlaces('seongsu');
-    const picks = ALL_REGIONS.find((r) => r.id === 'seongsu')!.picks!.length;
-    expect((f as unknown as { mock: { calls: unknown[] } }).mock.calls).toHaveLength(8 + picks);
+    const seongsu = ALL_REGIONS.find((r) => r.id === 'seongsu')!;
+    expect((f as unknown as { mock: { calls: unknown[] } }).mock.calls).toHaveLength(8 + seongsu.picks!.length + hashtagsOf(seongsu).length);
   });
 
   it('builds a full course from real-shaped data', async () => {
@@ -162,5 +162,26 @@ describe('categoryOf: 거리는 가게가 아니다', () => {
   it('treats a cafe street as a walk, not a cafe', () => {
     expect(categoryOf(doc('x', '성수동카페거리', '여행 > 관광,명소 > 테마거리 > 카페거리', 'AT4'))).toBe('walk');
     expect(categoryOf(doc('y', '어니언 성수', '음식점 > 카페', 'CE7'))).toBe('cafe');
+  });
+});
+
+describe('hashtag hot spots (블로그 글로 대신)', () => {
+  const p = (name: string) => ({ id: name, name, regionId: 'suwon', category: 'cafe' as const, location: { lat: 0, lng: 0 }, rating: 4, openMinute: 0, closeMinute: 1440, tags: ['카페'], description: '' });
+
+  it('makes neighborhood hashtags from region names', () => {
+    const byId = (id: string) => ALL_REGIONS.find((r) => r.id === id)!;
+    expect(hashtagsOf(byId('hongdae'))).toEqual(['홍대', '연남']);
+    expect(hashtagsOf(byId('suwon'))).toContain('행궁동');
+    expect(hashtagsOf(byId('paju'))).toEqual(['헤이리']);
+  });
+
+  it('counts posts that mention a place, ignoring branch suffixes and too-common names', () => {
+    expect(buzzKey(p('정지영커피로스터즈 행궁점'))).toBe('정지영커피로스터즈');
+    expect(buzzKey(p('식물'))).toBeUndefined();
+    const posts = ['행궁동 데이트 정지영커피로스터즈 갔다가 화성행궁 산책', '행궁동 핫플 정지영 커피로스터즈', '행궁동 맛집 식물 카페'];
+    const [a, b] = withBuzz([p('정지영커피로스터즈 행궁점'), p('식물')], [{ tag: '행궁동', posts }]);
+    expect(a.buzz).toBe(2);
+    expect(a.buzzTag).toBe('행궁동');
+    expect(b.buzz).toBeUndefined();
   });
 });

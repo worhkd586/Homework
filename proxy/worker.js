@@ -180,6 +180,13 @@ export function lookupName(doc) {
   return `${doc.place_name} ${dong}`.trim();
 }
 
+/** /buzz: 해시태그처럼 동네 이름과 함께 검색할 말 */
+export const BUZZ_WORDS = ['데이트', '핫플', '가볼만한곳'];
+
+export function stripTags(text) {
+  return String(text ?? '').replace(/<[^>]+>/g, '').replace(/&[a-z#0-9]+;/gi, ' ');
+}
+
 /** 최근 이 기간 안에 쓴 블로그 글을 '요즘 인기'로 센다 */
 export const RECENT_DAYS = 90;
 
@@ -247,6 +254,29 @@ async function handle(url, env) {
     if (c) Object.assign(params, { x: c.x, y: c.y, sort: 'accuracy' });
     const documents = await local(env, 'keyword', params);
     return json({ documents }, 200, { 'Cache-Control': `public, max-age=${DAY}` });
+  }
+  if (url.pathname === '/buzz') {
+    // 해시태그 검색처럼: '행궁동 데이트' · '행궁동 핫플' · '행궁동 가볼만한곳' 블로그 글(최대 300개)의 제목·요약을 돌려준다.
+    // 앱이 이 글들에 어느 가게 이름이 많이 나오는지 센다 (인스타 해시태그 대신, 같은 카카오 키로 합법적으로 쓸 수 있는 방법)
+    const q = (url.searchParams.get('q') ?? '').trim();
+    if (!q || q.length > 20) return json({ error: 'bad request' }, 400);
+    const lists = await Promise.all(
+      BUZZ_WORDS.flatMap((w) =>
+        [1, 2].map((page) =>
+          kakaoGet(env, `${DAUM}/blog?${new URLSearchParams({ query: `${q} ${w}`, size: '50', page: String(page), sort: 'accuracy' })}`)
+            .then((d) => d.documents ?? [])
+            .catch(() => []),
+        ),
+      ),
+    );
+    const seen = new Set();
+    const posts = [];
+    for (const d of lists.flat()) {
+      if (!d.url || seen.has(d.url)) continue;
+      seen.add(d.url);
+      posts.push({ t: `${stripTags(d.title)} ${stripTags(d.contents)}`.slice(0, 400), d: (d.datetime ?? '').slice(0, 10) });
+    }
+    return json({ q, posts }, 200, { 'Cache-Control': `public, max-age=${DAY}` });
   }
   if (url.pathname === '/pick') {
     // 골라 둔 명소 하나: 이름으로 찾아서 가장 비슷한 곳 하나 + 후기 수 · 최근 글 수

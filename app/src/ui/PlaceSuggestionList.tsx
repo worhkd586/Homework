@@ -19,14 +19,18 @@ interface Props {
   index: number;
   mode: 'add' | 'replace';
   onPick: (place?: Place) => void;
-  onClose: () => void;
+  onClose?: () => void;
+  /** 결과 화면 아래에 늘 펼쳐 두는 목록: 닫기·알아서 골라줘 없이, 더 내리면 계속 보여 준다 */
+  inline?: boolean;
+  /** inline일 때 화면 끝까지 내리면 바뀌는 값 (바뀔 때마다 더 보여 준다) */
+  moreTick?: number;
 }
 
 /**
  * 다른 곳 고르기 / 일정 추가: 그 자리에 어울리는 곳을 점수 순 리스트로 보여 준다.
  * 사진 · 후기 수 · 앞 일정에서 걸리는 시간 · 이유가 함께 나오고, 종류로 좁히거나 이름으로 찾을 수 있다.
  */
-export default function PlaceSuggestionList({ course, index, mode, onPick, onClose }: Props) {
+export default function PlaceSuggestionList({ course, index, mode, onPick, onClose, inline, moreTick = 0 }: Props) {
   const current = mode === 'replace' ? course.stops[index] : undefined;
   const [category, setCategory] = useState<PlaceCategory | undefined>(current?.place.category);
   const [items, setItems] = useState<StopSuggestion[]>([]);
@@ -44,7 +48,7 @@ export default function PlaceSuggestionList({ course, index, mode, onPick, onClo
     (async () => {
       // 바꾸기면 그 일정을 뺀 코스 기준으로 (앞뒤 이동시간이 맞게)
       const base = mode === 'replace' ? await recommender.removeStop(course, index) : course;
-      const list = await recommender.suggestStops(base, index, { category, avoidIds: current ? [current.place.id] : [], limit: 40 });
+      const list = await recommender.suggestStops(base, index, { category, avoidIds: current ? [current.place.id] : [], limit: inline ? 120 : 40 });
       if (alive) {
         setItems(list);
         setLoading(false);
@@ -54,6 +58,11 @@ export default function PlaceSuggestionList({ course, index, mode, onPick, onClo
       alive = false;
     };
   }, [course, index, mode, category]);
+
+  // 끝까지 내리면 다음 묶음을 보여 준다
+  useEffect(() => {
+    if (inline && moreTick > 0) setShown((n) => n + PAGE * 2);
+  }, [inline, moreTick]);
 
   const filtered = useMemo(
     () => items.filter((s) => !query || s.place.name.includes(query) || s.place.description.includes(query)),
@@ -98,16 +107,18 @@ export default function PlaceSuggestionList({ course, index, mode, onPick, onClo
 
   return (
     <View>
-      <View style={styles.top}>
-        <Pressable style={[styles.button, styles.primary]} onPress={() => onPick()} accessibilityLabel="알아서 골라줘">
-          <Text style={styles.buttonText}>✨ 알아서 골라줘</Text>
-        </Pressable>
-        <Pressable onPress={onClose} hitSlop={12} style={styles.close} accessibilityLabel="닫기">
-          <Text style={styles.muted}>✕</Text>
-        </Pressable>
-      </View>
+      {!inline && (
+        <View style={styles.top}>
+          <Pressable style={[styles.button, styles.primary]} onPress={() => onPick()} accessibilityLabel="알아서 골라줘">
+            <Text style={styles.buttonText}>✨ 알아서 골라줘</Text>
+          </Pressable>
+          <Pressable onPress={onClose} hitSlop={12} style={styles.close} accessibilityLabel="닫기">
+            <Text style={styles.muted}>✕</Text>
+          </Pressable>
+        </View>
+      )}
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: inline ? 0 : 10 }}>
         <Pressable style={[styles.chip, !category && styles.chipOn]} onPress={() => setCategory(undefined)}>
           <Text style={[styles.chipText, !category && styles.chipTextOn]}>전체</Text>
         </Pressable>
@@ -140,7 +151,11 @@ export default function PlaceSuggestionList({ course, index, mode, onPick, onClo
       ) : (
         <>
           <Text style={styles.small}>
-            {filtered.length ? `이 자리에 어울리는 순서예요 · ${filtered.length}곳` : '조건에 맞는 곳이 없어요. 종류를 바꾸거나 이름으로 찾아보세요.'}
+            {filtered.length
+              ? inline
+                ? `인기·동선 순서예요 · ${filtered.length}곳 · 눌러서 코스 끝에 추가`
+                : `이 자리에 어울리는 순서예요 · ${filtered.length}곳`
+              : '조건에 맞는 곳이 없어요. 종류를 바꾸거나 이름으로 찾아보세요.'}
           </Text>
           {filtered.slice(0, shown).map((s, i) => (
             <Pressable key={s.place.id} style={styles.row} onPress={() => setPreview({ place: s.place, reason: s.reason })} accessibilityLabel={`${s.place.name} 자세히 보기`}>
@@ -164,7 +179,7 @@ export default function PlaceSuggestionList({ course, index, mode, onPick, onClo
           ))}
           {filtered.length > shown && (
             <Pressable style={styles.more} onPress={() => setShown(shown + PAGE)}>
-              <Text style={styles.chipText}>더 보기 ({filtered.length - shown}곳 더)</Text>
+              <Text style={styles.chipText}>{inline ? `내리면 더 나와요 (${filtered.length - shown}곳 더)` : `더 보기 (${filtered.length - shown}곳 더)`}</Text>
             </Pressable>
           )}
           {!!query.trim() && (

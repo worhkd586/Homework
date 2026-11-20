@@ -48,6 +48,9 @@ export default function ResultScreen({ options, note, selected, isSaved, log, on
   const [query, setQuery] = useState('');
   const [places, setPlaces] = useState<Place[]>([]);
   const [busy, setBusy] = useState(false);
+  /** 맨 아래 '이 동네 추천 장소' 목록: 끝까지 내릴 때마다 1씩 올라서 더 보여 준다 */
+  const [moreTick, setMoreTick] = useState(0);
+  const nearEnd = useRef(false);
   // 일정을 탭하면 열리는 패널이 화면 밖에 열리지 않도록, 그 일정 위치로 스크롤한다
   const scrollRef = useRef<ScrollViewInstance>(null);
   const listY = useRef(0);
@@ -159,7 +162,17 @@ export default function ResultScreen({ options, note, selected, isSaved, log, on
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={200}
+        onScroll={({ nativeEvent: e }) => {
+          const near = e.contentOffset.y + e.layoutMeasurement.height >= e.contentSize.height - 400;
+          if (near && !nearEnd.current) setMoreTick((n) => n + 1);
+          nearEnd.current = near;
+        }}
+      >
         <View style={styles.header}>
           <Pressable onPress={onBack} hitSlop={12} style={styles.backButton} accessibilityLabel="조건 바꾸기 · 내 코스로 돌아가기">
             <Text style={styles.backIcon}>‹</Text>
@@ -299,6 +312,23 @@ export default function ResultScreen({ options, note, selected, isSaved, log, on
           </View>
         )}
 
+        <View style={styles.more}>
+          <Text style={styles.moreTitle}>이 동네 추천 장소</Text>
+          <Text style={styles.small}>후기 많고 요즘 블로그 데이트·핫플 글에 자주 나오는 곳부터 보여 줘요.</Text>
+          {busy ? (
+            <ActivityIndicator color={colors.accent} style={{ marginTop: 12 }} />
+          ) : (
+            <PlaceSuggestionList
+              course={course}
+              index={course.stops.length}
+              mode="add"
+              inline
+              moreTick={moreTick}
+              onPick={(p) => run(() => recommender.insertStop(course, course.stops.length, p))}
+            />
+          )}
+        </View>
+
         <Text style={[styles.small, { marginTop: 24 }]}>{dataSourceNote()}</Text>
       </ScrollView>
 
@@ -372,6 +402,8 @@ const styles = StyleSheet.create({
   badge: { alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, overflow: 'hidden', backgroundColor: colors.pink, color: colors.onPink, fontSize: 12, fontWeight: '700' },
   reason: { color: colors.muted, fontSize: 13, marginTop: 8 },
   pop: { color: colors.text, fontSize: 14, fontWeight: '800', marginTop: 4 },
+  more: { marginTop: 28, paddingTop: 20, borderTopWidth: 1, borderTopColor: colors.line },
+  moreTitle: { color: colors.text, fontSize: 20, fontWeight: '800', letterSpacing: -0.3, marginBottom: 2 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   action: { flexGrow: 1, flexBasis: '45%', minHeight: 44, justifyContent: 'center', borderRadius: 10, alignItems: 'center', backgroundColor: colors.surface },
   actionText: { color: colors.text, fontSize: 14, fontWeight: '700' },

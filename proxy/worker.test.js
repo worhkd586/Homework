@@ -186,3 +186,22 @@ describe('recent popularity', () => {
     expect(none.documents).toHaveLength(0);
   });
 });
+
+describe('/buzz', () => {
+  it('collects blog posts about a neighborhood like a hashtag search, without duplicates', async () => {
+    const fetchMock = vi.fn(async (url) => {
+      const q = new URL(url).searchParams.get('query');
+      return new Response(JSON.stringify({ documents: [
+        { url: 'https://b/1', title: '<b>행궁동</b> 데이트 코스', contents: '정지영커피로스터즈 들렀다가', datetime: '2026-11-01T10:00:00.000+09:00' },
+        { url: `https://b/${q}`, title: q, contents: '', datetime: '2026-10-01T10:00:00.000+09:00' },
+      ] }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const body = await (await call('/buzz?q=행궁동')).json();
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(body.posts[0].t).toContain('행궁동 데이트 코스 정지영커피로스터즈');
+    expect(body.posts.filter((p) => p.t.includes('데이트 코스'))).toHaveLength(1);
+    expect(body.posts.length).toBe(4);
+    expect((await call('/buzz?q=')).status).toBe(400);
+  });
+});
